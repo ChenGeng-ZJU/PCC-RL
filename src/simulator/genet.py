@@ -1,7 +1,9 @@
 import argparse
+import os.path as osp
 import os
 import time
 from typing import Callable, Dict, List, Set, Union
+from pathlib import Path
 
 import numpy as np
 from bayes_opt import BayesianOptimization
@@ -12,6 +14,8 @@ from common.utils import (read_json_file, set_seed, write_json_file)
 from simulator.aurora import Aurora
 from simulator.cubic import Cubic
 from simulator.trace import generate_trace
+from simulator.network_simulator.bbr import BBR
+from simulator.compare_syn_real_traces import compare
 
 MODEL_PATH = ""
 
@@ -26,6 +30,7 @@ def parse_args():
     parser.add_argument("--config-file", type=str,
                         help="Path to configuration file.")
     parser.add_argument('--seed', type=int, default=42, help='seed')
+    parser.add_argument('--bbr', action="store_true")
 
     return parser.parse_args()
 
@@ -115,8 +120,8 @@ class Genet:
         self.heuristic = heuristic
         self.rl_method = rl_method
         self.optimizer = BayesianOptimization(
-            f=lambda bandwidth, delay, queue, loss, T_s, d_bw, d_delay: black_box_function(
-                bandwidth, delay, queue, loss, T_s, d_bw, d_delay,
+            f=lambda bandwidth, delay, queue, loss, T_s: black_box_function(
+                bandwidth, delay, queue, loss, T_s,
                 heuristic=self.heuristic, rl_method=self.rl_method),
             pbounds=pbounds, random_state=seed)
         # my_observer = BasicObserver()
@@ -125,19 +130,36 @@ class Genet:
         #     subscriber=my_observer,
         #     callback=None)
 
-    def train(self):
+    def train(self, heu = 'cubic'):
         """Genet trains rl_method."""
-        for i in range(12):
+        from time import time
+        for i in range(120):
+            print("start finding param")
+            t1 = time()
             best_param = self.find_best_param()
+            t2 = time()
+            print("end finding parameter, time elpased: {}".format(t2-t1))
             print(best_param)
             self.rand_ranges.add_ranges([best_param['params']])
             self.cur_config_file = os.path.join(
                 self.save_dir, "bo_"+str(i) + ".json")
             self.rand_ranges.dump(self.cur_config_file)
-            self.rl_method.train(self.cur_config_file, 3.6e4, 500)
+            self.rl_method.train(i, self.cur_config_file, 200000, 500)
+            # self.rl_method.train(i, self.cur_config_file, 10000, 500)
+            # self.rl_method.train(self.cur_config_file, 800, 500)
+            t3 = time()
+            print("finish a training, time elapsed = {}".format(t3 - t2))
+            print("Start Ploting...")
+            model_path = osp.join(self.save_dir, "bo_{}_model_step_201600.ckpt".format(i))
+            # model_path = osp.join(self.save_dir, "bo_{}_model_step_7200.ckpt".format(i))
+            name = self.save_dir.split('/')[-1] + "_bo_{}".format(i+1)
+            compare(model_path, name, heu)
+            print("End Ploting...")
+            
 
     def find_best_param(self):
-        self.optimizer.maximize(init_points=13, n_iter=2, kappa=20, xi=0.1)
+        # self.optimizer.maximize(init_points=13, n_iter=2, kappa=20, xi=0.1)
+        self.optimizer.maximize(init_points=8, n_iter=2, kappa=20, xi=0.1)
         best_param = self.optimizer.max
         return best_param
 
@@ -180,14 +202,23 @@ def black_box_function(bandwidth, delay, queue, loss, T_s, heuristic, rl_method)
 def main():
     args = parse_args()
     set_seed(args.seed)
+    Path(args.save_dir).mkdir(exist_ok=True, parents=True)
 
     cubic = Cubic(args.save_dir, args.seed)
+    bbr = BBR(args.save_dir)
     aurora = Aurora(seed=args.seed, log_dir=args.save_dir,
                     pretrained_model_path=args.model_path,
-                    timesteps_per_actorbatch=10, delta_scale=1)
-    genet = Genet(args.config_file, args.save_dir, black_box_function, cubic,
-                  aurora)
-    genet.train()
+                    timesteps_per_actorbatch=7200, delta_scale=1)
+    name = args.save_dir.split('/')[-1] + "_BeforeBO"
+    if not args.bbr:
+        compare(args.model_path, name)
+        genet = Genet(args.config_file, args.save_dir, black_box_function, cubic, aurora)
+        genet.train()
+    else:
+        compare(args.model_path, name, "bbr")
+        print("using bbr")
+        genet = Genet(args.config_file, args.save_dir, black_box_function, bbr, aurora)
+        genet.train("bbr")
 
 
 if __name__ == "__main__":

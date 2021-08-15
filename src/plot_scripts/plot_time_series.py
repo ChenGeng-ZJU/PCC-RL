@@ -37,7 +37,7 @@ def main():
         if not os.path.exists(log_file):
             continue
         cc = os.path.basename(log_file).split('_')[0]
-        df = pd.read_csv(log_file)
+        df = pd.read_csv(log_file, error_bad_lines=False)
         if PLOT:
             fig, axes = plt.subplots(6, 1, figsize=(12, 10))
             axes[0].set_title(cc)

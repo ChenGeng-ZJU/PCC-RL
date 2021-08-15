@@ -4,6 +4,7 @@ import logging
 import os
 import types
 import warnings
+import os.path as osp
 
 import tensorflow as tf
 
@@ -77,6 +78,7 @@ def main():
                                       (60, 60),
                                       constant_bw=not args.time_variant_bw)]
     # print(test_traces[0].bandwidths)
+    test_traces[0].dump(osp.join(args.save_dir, "test_trace.json"))
 
     aurora = Aurora(seed=args.seed, timesteps_per_actorbatch=10,
                     log_dir=args.save_dir,

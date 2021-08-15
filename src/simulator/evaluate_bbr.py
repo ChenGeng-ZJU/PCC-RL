@@ -11,6 +11,7 @@ from common.utils import set_seed
 
 from simulator import good_network_sim as network_sim
 from simulator.trace import generate_trace, generate_traces, Trace
+from simulator.network_simulator.bbr import BBR
 
 warnings.filterwarnings("ignore")
 
@@ -42,22 +43,8 @@ def parse_args():
 
 
 def test_on_trace(trace, save_dir, seed):
-    env = gym.make('cubic-v0', traces=[trace], congestion_control_type='cubic',
-                   log_dir=save_dir)
-    env.seed(seed)
-
-    _ = env.reset()
-    rewards = []
-    while True:
-        action = [0, 0]
-        _, reward, dones, _ = env.step(action)
-        rewards.append(reward * 1000)
-        if dones:
-            break
-    with open(os.path.join(save_dir, "cubic_packet_log.csv"), 'w', 1) as f:
-        pkt_logger = csv.writer(f, lineterminator='\n')
-        pkt_logger.writerows(env.net.pkt_log)
-    return rewards, env.net.pkt_log
+    bbr = BBR(save_dir)
+    return bbr.test(trace)
 
 
 def test_on_traces(traces, save_dirs, seed):
@@ -70,8 +57,7 @@ def test_on_traces(traces, save_dirs, seed):
     # pkt_logs = [result[1] for result in results]
     rewards = []
     pkt_logs = []
-    from tqdm import tqdm
-    for trace, save_dir in tqdm(zip(traces, save_dirs)):
+    for trace, save_dir in zip(traces, save_dirs):
         reward, pkt_log = test_on_trace(trace, save_dir, seed)
         rewards.append(reward)
         pkt_logs.append(pkt_log)

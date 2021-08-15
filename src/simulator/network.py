@@ -17,6 +17,7 @@ import sys
 import time
 import warnings
 warnings.simplefilter(action='ignore', category=UserWarning)
+from time import time
 
 import gym
 import numpy as np
@@ -488,6 +489,7 @@ class SimulatedNetworkEnv(gym.Env):
         self.debug_thpt_changes = False
         self.last_thpt = None
         self.last_rate = None
+        self.last_time = time()
 
         if self.use_cwnd:
             self.action_space = spaces.Box(

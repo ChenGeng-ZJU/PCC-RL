@@ -6,7 +6,6 @@ from simulator.network_simulator.constants import BYTES_PER_PACKET
 class MonitorInterval():
     def __init__(self, start_time, end_time):
         """
-
         start_time: start time of the monitor interval.
         end_time: end time of monitor interval.
         """

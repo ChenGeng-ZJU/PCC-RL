@@ -229,6 +229,7 @@ def generate_trace(duration_range: Tuple[float, float],
         loss_rate_range: Uplink loss rate range.
         queue_size_range: queue size range in packets.
     """
+    set_seed(28)
     assert len(duration_range) == 2 and \
             duration_range[0] <= duration_range[1] and duration_range[0] > 0
     assert len(bandwidth_range) == 2 and \
@@ -322,8 +323,6 @@ def generate_traces(config_file: str, tot_trace_cnt: int, duration: int,
                                    (delay_min, delay_max),
                                    (loss_min, loss_max),
                                    (queue_min, queue_max),
-                                   (d_bw_min, d_bw_max),
-                                   (d_delay_min, d_delay_max),
                                    (T_s_min, T_s_max),
                                    (delay_noise_min, delay_noise_max),
                                    constant_bw=constant_bw)
