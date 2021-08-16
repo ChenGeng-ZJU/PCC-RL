@@ -114,16 +114,12 @@ class Genet:
         self.cur_config_file = config_file
         self.rand_ranges = RandomizationRanges(config_file)
         self.param_names = self.rand_ranges.get_parameter_names()
-        pbounds = self.rand_ranges.get_original_range()
+        self.pbounds = self.rand_ranges.get_original_range()
+        self.seed = seed
 
         self.save_dir = save_dir
         self.heuristic = heuristic
         self.rl_method = rl_method
-        self.optimizer = BayesianOptimization(
-            f=lambda bandwidth, delay, queue, loss, T_s: black_box_function(
-                bandwidth, delay, queue, loss, T_s,
-                heuristic=self.heuristic, rl_method=self.rl_method),
-            pbounds=pbounds, random_state=seed)
         # my_observer = BasicObserver()
         # self.optimizer.subscribe(
         #     event=Events.OPTIMIZATION_STEP,
@@ -144,13 +140,13 @@ class Genet:
             self.cur_config_file = os.path.join(
                 self.save_dir, "bo_"+str(i) + ".json")
             self.rand_ranges.dump(self.cur_config_file)
-            self.rl_method.train(i, self.cur_config_file, 200000, 500)
+            self.rl_method.train(i, self.cur_config_file, 3.6e4, 500)
             # self.rl_method.train(i, self.cur_config_file, 10000, 500)
             # self.rl_method.train(self.cur_config_file, 800, 500)
             t3 = time()
             print("finish a training, time elapsed = {}".format(t3 - t2))
             print("Start Ploting...")
-            model_path = osp.join(self.save_dir, "bo_{}_model_step_201600.ckpt".format(i))
+            model_path = osp.join(self.save_dir, "bo_{}_model_step_36000.ckpt".format(i))
             # model_path = osp.join(self.save_dir, "bo_{}_model_step_7200.ckpt".format(i))
             name = self.save_dir.split('/')[-1] + "_bo_{}".format(i+1)
             compare(model_path, name, heu)
@@ -158,15 +154,20 @@ class Genet:
             
 
     def find_best_param(self):
-        # self.optimizer.maximize(init_points=13, n_iter=2, kappa=20, xi=0.1)
-        self.optimizer.maximize(init_points=8, n_iter=2, kappa=20, xi=0.1)
-        best_param = self.optimizer.max
+        optimizer = BayesianOptimization(
+            f=lambda bandwidth, delay, queue, loss, T_s: black_box_function(
+                bandwidth, delay, queue, loss, T_s,
+                heuristic=self.heuristic, rl_method=self.rl_method),
+            pbounds=self.pbounds, random_state=self.seed)
+        optimizer.maximize(init_points=8, n_iter=2, kappa=20, xi=0.1)
+        best_param = optimizer.max
         return best_param
 
+SAVEDIR=""
 
 def black_box_function(bandwidth, delay, queue, loss, T_s, heuristic, rl_method):
     t_start = time.time()
-    trace = generate_trace(duration_range=(30, 30),
+    trace = generate_trace(duration_range=(10, 10),
                            bandwidth_range=(1, bandwidth),
                            delay_range=(delay, delay),
                            loss_rate_range=(loss, loss),
@@ -174,6 +175,7 @@ def black_box_function(bandwidth, delay, queue, loss, T_s, heuristic, rl_method)
                            T_s_range=(T_s, T_s),
                            delay_noise_range=(0, 0),
                            constant_bw=False)
+    trace.dump(osp.join(SAVEDIR, "trace.json"))
     print("trace generation used {}s".format(time.time() - t_start))
     t_start = time.time()
     heuristic_reward, _ = heuristic.test(trace)
@@ -203,6 +205,7 @@ def main():
     args = parse_args()
     set_seed(args.seed)
     Path(args.save_dir).mkdir(exist_ok=True, parents=True)
+    SAVEDIR = args.save_dir
 
     cubic = Cubic(args.save_dir, args.seed)
     bbr = BBR(args.save_dir)

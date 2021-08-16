@@ -666,6 +666,4 @@ class BBR:
                                  'bytes', 'cur_latency', 'queue_delay',
                                  'packet_in_queue', 'sending_rate', 'bandwidth'])
             pkt_logger.writerows(net.pkt_log)
-        
-        trace.dump(os.path.join(self.save_dir, "trace.json"))
         return np.mean(rewards), net.pkt_log

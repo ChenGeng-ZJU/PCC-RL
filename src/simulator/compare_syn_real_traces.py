@@ -24,12 +24,18 @@ def compare_metric(model_path, name, save_dir, vals2test, key, heuristic = "cubi
     aurora_errors = []
     cubic1_rewards = []
     cubic1_errors = []
-    duration_range=(30, 30)
-    bw_range=(1, 7)
-    delay_range=(5, 55)
-    lr_range=(0.000, 0.0050)
-    queue_size_range=(10, 70)
-    T_s_range=(1, 4)
+    # duration_range=(10, 10)
+    # bw_range=(1, 1)
+    # delay_range=(100, 100)
+    # lr_range=(0, 0)
+    # queue_size_range=(10, 10)
+    # T_s_range=(0, 0)
+    duration_range=(10, 10)
+    bw_range=(10, 10)
+    delay_range=(5, 5)
+    lr_range=(0.05, 0.05)
+    queue_size_range=(10, 10)
+    T_s_range=(0, 0)
     delay_noise_range=(0, 0)
     for bwi, bw in enumerate(tqdm(vals2test[key])):
         val = bw
@@ -120,11 +126,11 @@ def compare(model_path, name, heuristc='cubic'):
 
     vals2test = {
         "bandwidth": [1, 2, 3, 4, 5, 6],
-        "delay": [5, 15, 25, 35, 45, 55],
-        "loss": [0, 0.001, 0.002, 0.003, 0.004, 0.005],
-        "queue": [10, 20, 30, 40, 50, 60],
-        "T_s": [1, 1.5, 2, 2.5, 3, 3.5, 4],
-        "delay_noise": [0, 1, 2, 3, 4, 5],
+        "delay": [5, 50, 100, 150, 200],
+        "loss": [0, 0.01, 0.02, 0.03, 0.04, 0.05],
+        "queue": [2, 10, 50, 100, 150, 200],
+        "T_s": [0, 1, 2, 3, 4, 5, 6],
+        "delay_noise": [0, 20, 40, 60, 80, 100],
     }
 
     for key in vals2test:
@@ -133,6 +139,7 @@ def compare(model_path, name, heuristc='cubic'):
 
 if __name__ == "__main__":
     rpath = "/data/gengchen/PCC-RL"
-    model = osp.join(rpath, "data/bbr-081501/bo_0_model_step_201600.ckpt")
-    name = 'bbr-081501_bo_0' 
-    compare(model, name, 'bbr')
+    model = osp.join(rpath, "data/udr-large-genet-081617/bo_9_model_step_36000.ckpt")
+    name = 'test' 
+    # compare(model, name)
+    compare_metric(model, name, osp.join(rpath, 'figs'), {'bandwidth': [10]}, 'bandwidth')
