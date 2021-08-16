@@ -8,7 +8,7 @@ from typing import List, Tuple
 import ipdb
 import numpy as np
 
-from common.utils import pcc_aurora_reward
+from common.utils import pcc_aurora_reward, set_seed
 from simulator.network_simulator.constants import (BITS_PER_BYTE,
                                                    BYTES_PER_PACKET)
 from simulator.network_simulator.link import Link
@@ -44,7 +44,8 @@ class BBRPacket(packet.Packet):
               "pkt_in_flight: {}".format(
                   self.pkt_id, self.ts, self.event_type, self.dropped,
                   self.cur_latency, self.delivered, self.delivered_time,
-                  self.first_sent_time, self.sender.bytes_in_flight / 1500))
+                  self.first_sent_time,
+                  self.sender.bytes_in_flight / BYTES_PER_PACKET))
 
 
 class RateSample:
@@ -85,12 +86,14 @@ class BBRBtlBwFilter:
         self.cache = []
 
     def update(self, delivery_rate: float, round_count: int) -> None:
-        # TODO: not finished yet
+        # TODO: need to figure out how to use the round count
         self.cache.append(delivery_rate)
         if len(self.cache) > self.btlbw_filter_len:
             self.cache.pop(0)
 
     def get_btlbw(self) -> float:
+        if not self.cache:
+            return 0
         return max(self.cache)
 
 
@@ -208,7 +211,7 @@ class BBRSender(Sender):
         # nominal_bandwidth = InitialCwnd / (SRTT ? SRTT : 1ms)
         # InitialCwnd = 10 packets as Cubic
         if self.srtt is None:
-            nominal_bandwidth = self.cwnd * BYTES_PER_PACKET / 1e-3  # 1ms
+            nominal_bandwidth = self.cwnd * BYTES_PER_PACKET / 0.1 # self.net.links[0].trace.get_delay(0) * 1e-3# 1e-3  # 1ms
         else:
             nominal_bandwidth = self.cwnd * BYTES_PER_PACKET / self.srtt  # bytes/sec
         self.pacing_rate = self.pacing_gain * nominal_bandwidth  # bytes/sec
@@ -243,7 +246,6 @@ class BBRSender(Sender):
             self.next_round_delivered = self.conn_state.delivered
             self.round_count += 1
             self.round_start = True
-            # ipdb.set_trace()
         else:
             self.round_start = False
 
@@ -341,9 +343,7 @@ class BBRSender(Sender):
         self.cwnd_gain = BBR_HIGH_GAIN    # maintain cwnd
 
     def check_drain(self):
-
         if self.state == BBRMode.BBR_STARTUP and self.filled_pipe:
-            # ipdb.set_trace()
             self.enter_drain()
         if self.state == BBRMode.BBR_DRAIN and self.bytes_in_flight <= self.inflight(1.0):
             self.enter_probe_bw()  # we estimate queue is drained
@@ -484,10 +484,8 @@ class BBRSender(Sender):
 
         if self.rs.interval != 0:
             self.rs.delivery_rate = self.rs.delivered / self.rs.interval
-            # ipdb.set_trace()
             # if self.rs.delivery_rate * 8 / 1e6 > 1.2:
-        # print("C.delivered:", self.conn_state.delivered, "rs.prior_delivered:", self.rs.prior_delivered, "rs.delivered:", self.rs.delivered, "rs.interval:", self.rs.interval, "rs.delivery_rate:", self.rs.delivery_rate * 8 / 1e6)
-        # ipdb.set_trace()
+            # print("C.delivered:", self.conn_state.delivered, "rs.prior_delivered:", self.rs.prior_delivered, "rs.delivered:", self.rs.delivered, "rs.interval:", self.rs.interval, "rs.delivery_rate:", self.rs.delivery_rate * 8 / 1e6)
 
         return True  # we filled in rs with a rate sample */
 
@@ -497,13 +495,14 @@ class BBRSender(Sender):
         # if pkt.delivered_time == 0:
         #     return  # P already SACKed
 
+        self.rs.prior_in_flight = self.bytes_in_flight
         self.conn_state.delivered += pkt.pkt_size
         self.conn_state.delivered_time = self.get_cur_time()
 
         # Update info using the newest packet:
         # print(pkt.delivered, self.rs.prior_delivered)
-        if  pkt.delivered > self.rs.prior_delivered:
-        # if  pkt.delivered > self.rs.prior_delivered:
+        # if pkt.delivered > self.rs.prior_delivered:
+        if (not self.rs.prior_delivered) or pkt.delivered > self.rs.prior_delivered:
             self.rs.prior_delivered = pkt.delivered
             self.rs.prior_time = pkt.delivered_time
             self.rs.is_app_limited = pkt.is_app_limited
@@ -527,7 +526,7 @@ class BBRSender(Sender):
         else:
             estimated_bdp = self.btlbw * self.rtprop / BYTES_PER_PACKET
             cwnd_gain = self.cwnd_gain
-        # cwnd_gain * estimated_bdp * BYTES_PER_PACKET:
+        # if self.bytes_in_flight >= cwnd_gain * estimated_bdp * BYTES_PER_PACKET:
         if self.bytes_in_flight >= self.cwnd * BYTES_PER_PACKET:
             # wait for ack or timeout
             return False
@@ -540,12 +539,12 @@ class BBRSender(Sender):
         elif on_ack:
             if self.get_cur_time() < self.next_send_time:
                 return
-            # return
-            self.next_send_time = self.get_cur_time()
+            return
+            # self.next_send_time = self.get_cur_time()
         else:
-            self.next_send_time = self.get_cur_time() + BYTES_PER_PACKET / self.pacing_rate
+            self.next_send_time = self.get_cur_time() + BYTES_PER_PACKET / self.pacing_rate # (5 * 1e6 / 8)#
         next_pkt = BBRPacket(self.next_send_time, self, 0)
-        self.net.add_packet(self.next_send_time, next_pkt)
+        self.net.add_packet(next_pkt)
 
     def on_packet_sent(self, pkt: BBRPacket) -> None:
         # if self.get_cur_time() >= self.next_send_time:
@@ -580,36 +579,63 @@ class BBRSender(Sender):
             raise RuntimeError("network is not registered in sender.")
         super().on_packet_lost(pkt)
         # self.rs.losses = 1
-        self.on_enter_fast_recovery()
+        # self.on_enter_fast_recovery()
 
     def reset(self):
-        raise NotImplementedError
+        super().reset()
+        self.cwnd = TCP_INIT_CWND
+
+        self.conn_state = ConnectionState()
+        self.rs = RateSample()
+        self.btlbw = 0  # bottleneck bw in bytes/sec
+
+        self.app_limited_until = 0
+        self.next_send_time = 0
+
+
+        self.pacing_gain = BBR_HIGH_GAIN  # referece:
+
+        self.target_cwnd = 0
+
+        self.in_fast_recovery_mode = False
+
+        self.init()
 
     def debug_print(self):
-        print("ts: {:.3f}, pacing_rate: {:.3f}Mbps, next_send_time: {:.3f}, "
-              "cwnd: {}, target_cwnd: {}, bbr_state: {}, btlbw: {:.3f}Mbps, rtprop: {:.3f}, "
-              "rs.delivery_rate: {:.3f}Mbps, can_send_packet: {}, "
-              "pkt_in_flight: {}, full_bw: {:.3f}Mbps, full_bw_count: {}, filled_pipe: {}, C.delivered: {}, next_round_delivered: {}, round_start: {}, prior_delivered: {}".format(
-                  self.get_cur_time(), self.pacing_rate * 8 / 1e6,
-                  self.next_send_time, self.cwnd, self.target_cwnd,
-                  self.state.value, self.btlbw * 8 / 1e6, self.rtprop,
-                  self.rs.delivery_rate * 8 / 1e6, self.can_send_packet(),
+        print("ts: {:.3f}, round_count: {}, pacing_gain:{}, "
+              "pacing_rate: {:.3f}Mbps, next_send_time: {:.3f}, cwnd_gain: {}, "
+              "cwnd: {}, target_cwnd: {}, bbr_state: {}, btlbw: {:.3f}Mbps, "
+              "rtprop: {:.3f}, rs.delivery_rate: {:.3f}Mbps, "
+              "can_send_packet: {}, pkt_in_flight: {}, full_bw: {:.3f}Mbps, "
+              "full_bw_count: {}, filled_pipe: {}, C.delivered: {}, "
+              "next_round_delivered: {}, round_start: {}, prior_delivered: {}".format(
+                  self.get_cur_time(), self.round_count, self.pacing_gain,
+                  self.pacing_rate * BITS_PER_BYTE / 1e6, self.next_send_time,
+                  self.cwnd_gain, self.cwnd, self.target_cwnd, self.state.value,
+                  self.btlbw * BITS_PER_BYTE / 1e6, self.rtprop,
+                  self.rs.delivery_rate * BITS_PER_BYTE / 1e6,
+                  self.can_send_packet(),
                   self.bytes_in_flight / BYTES_PER_PACKET,
-                  self.full_bw * 8 / 1e6, self.full_bw_count, self.filled_pipe,
-                  self.conn_state.delivered, self.next_round_delivered, self.round_start, self.rs.prior_delivered))
+                  self.full_bw * BITS_PER_BYTE / 1e6, self.full_bw_count,
+                  self.filled_pipe, self.conn_state.delivered,
+                  self.next_round_delivered, self.round_start,
+                  self.rs.prior_delivered))
 
 
 class BBR:
     cc_name = 'bbr'
 
-    def __init__(self, save_dir: str):
+    def __init__(self, save_dir: str, record_pkt_log: bool = False,
+                 seed: int = 42):
         self.save_dir = save_dir
+        self.record_pkt_log = record_pkt_log
+        set_seed(seed)
 
     def test(self, trace: Trace) -> Tuple[float, List]:
 
         links = [Link(trace), Link(trace)]
         senders = [BBRSender(0, 0)]
-        net = Network(senders, links, True)
+        net = Network(senders, links, self.record_pkt_log)
 
         rewards = []
         start_rtt = trace.get_delay(0) * 2 / 1000
@@ -635,8 +661,9 @@ class BBR:
             avg_queue_delay = mi.get("avg queue delay")
             loss = mi.get("loss ratio")
 
-            reward = pcc_aurora_reward(throughput / 8 / BYTES_PER_PACKET, latency,
-                                       loss, np.mean(trace.bandwidths) * 1e6 / 8 / BYTES_PER_PACKET)
+            reward = pcc_aurora_reward(
+                throughput / BITS_PER_BYTE / BYTES_PER_PACKET, latency, loss,
+                np.mean(trace.bandwidths) * 1e6 / BITS_PER_BYTE / BYTES_PER_PACKET)
             rewards.append(reward)
             try:
                 ssthresh = senders[0].ssthresh
@@ -647,23 +674,23 @@ class BBR:
             writer.writerow([
                 net.get_cur_time(), send_rate, throughput, latency, loss,
                 reward, action, mi.bytes_sent, mi.bytes_acked, mi.bytes_lost,
-                mi.send_start, mi.send_end, mi.recv_start,
-                mi.recv_end, mi.get('latency increase'),
-                mi.packet_size,
+                mi.send_start, mi.send_end, mi.recv_start, mi.recv_end,
+                mi.get('latency increase'), mi.packet_size,
                 links[0].get_bandwidth(net.get_cur_time()) * BYTES_PER_PACKET * BITS_PER_BYTE,
-                avg_queue_delay, links[0].pkt_in_queue,
-                links[0].queue_size,
+                avg_queue_delay, links[0].pkt_in_queue, links[0].queue_size,
                 senders[0].cwnd, ssthresh, senders[0].rto])
             if senders[0].srtt:
                 run_dur = senders[0].srtt
             should_stop = trace.is_finished(net.get_cur_time())
             if should_stop:
                 break
-
-        with open(os.path.join(self.save_dir, "{}_packet_log.csv".format(self.cc_name)), 'w', 1) as f:
-            pkt_logger = csv.writer(f, lineterminator='\n')
-            pkt_logger.writerow(['timestamp', 'packet_event_id', 'event_type',
-                                 'bytes', 'cur_latency', 'queue_delay',
-                                 'packet_in_queue', 'sending_rate', 'bandwidth'])
-            pkt_logger.writerows(net.pkt_log)
+        if self.record_pkt_log:
+            with open(os.path.join(
+                self.save_dir, "{}_packet_log.csv".format(self.cc_name)), 'w', 1) as f:
+                pkt_logger = csv.writer(f, lineterminator='\n')
+                pkt_logger.writerow(['timestamp', 'packet_event_id',
+                                     'event_type', 'bytes', 'cur_latency',
+                                     'queue_delay', 'packet_in_queue',
+                                     'sending_rate', 'bandwidth'])
+                pkt_logger.writerows(net.pkt_log)
         return np.mean(rewards), net.pkt_log

@@ -5,34 +5,13 @@ import heapq
 # import random
 # import sys
 # import time
-from typing import List, TypeVar
+from typing import List
 
 
-# from common import config, sender_obs
-from simulator.network_simulator.constants import (BITS_PER_BYTE,
-                                                   BYTES_PER_PACKET)
+from simulator.network_simulator.constants import BITS_PER_BYTE, BYTES_PER_PACKET, EVENT_TYPE_ACK, EVENT_TYPE_SEND
 from simulator.network_simulator.packet import Packet
 from simulator.network_simulator.link import Link
-from simulator.network_simulator.sender import Sender, SenderType
-
-MAX_CWND = 5000
-MIN_CWND = 4
-
-MAX_RATE = 1000
-MIN_RATE = 40
-
-REWARD_SCALE = 0.001
-
-# MAX_STEPS = 1000
-# MAX_STEPS = 600
-# MAX_STEPS = 3000
-
-EVENT_TYPE_SEND = 'S'
-EVENT_TYPE_ACK = 'A'
-
-
-LATENCY_PENALTY = 1.0
-LOSS_PENALTY = 1.0
+from simulator.network_simulator.sender import SenderType
 
 USE_LATENCY_NOISE = False
 # USE_LATENCY_NOISE = True
@@ -40,7 +19,6 @@ MAX_LATENCY_NOISE = 1.01
 
 # DEBUG = True
 DEBUG = False
-START_SENDING_RATE = 500  # packets per second
 
 
 class Network:
@@ -48,7 +26,6 @@ class Network:
 
     def __init__(self, senders: List[SenderType], links: List[Link],
                  record_pkt_log: bool = False):
-        self.event_count = 0
         self.q = []
         self.cur_time = 0.0
         self.senders = senders
@@ -61,22 +38,14 @@ class Network:
         for sender in self.senders:
             sender.register_network(self)
             sender.reset_obs()
-            # heapq.heappush(self.q, (1.0 / sender.rate, sender,
-            #                         EVENT_TYPE_SEND, 0, 0.0, False, self.event_count, sender.rto, 0))
-            # heapq.heappush(self.q, (0, sender,
-            #                         EVENT_TYPE_SEND, 0, 0.0, False, self.event_count, sender.rto, 0))
 
             # pkt = Packet(0, sender, 0)
             # self.add_packet(0, pkt)
             sender.schedule_send(True)
 
-    def add_packet(self, event_time: float, pkt: Packet) -> None:
+    def add_packet(self, pkt: Packet) -> None:
         """Add a packet to the packet event queue."""
-        pkt.pkt_id =  self.event_count
         heapq.heappush(self.q, pkt)
-        self.event_count += 1
-        # heapq.heappush(self.q, (0, sender,
-        #                         EVENT_TYPE_SEND, 0, 0.0, False, self.event_count, sender.rto, 0))
 
     def reset(self) -> None:
         self.cur_time = 0.0
@@ -109,7 +78,6 @@ class Network:
             pkt = heapq.heappop(self.q)
 
             self.cur_time = pkt.ts
-            # new_event_queue_delay = event_queue_delay
             push_new_event = False
             # debug_print("Got %d event %s, to link %d, latency %f at time %f, "
             #             "next_hop %d, dropped %s, event_q length %f, "
@@ -140,32 +108,30 @@ class Network:
                                 [self.cur_time, pkt.pkt_id, 'lost',
                                  pkt.pkt_size, pkt.cur_latency, pkt.queue_delay,
                                  self.links[0].pkt_in_queue,
-                                 sender.rate * BYTES_PER_PACKET * 8,
-                                 self.links[0].get_bandwidth(self.cur_time) * BYTES_PER_PACKET * 8])
+                                 sender.pacing_rate * BYTES_PER_PACKET,
+                                 self.links[0].get_bandwidth(self.cur_time) * BYTES_PER_PACKET * BITS_PER_BYTE])
                     else:
-                        # sender.debug_print()
-                        # pkt.debug_print()
+                        sender.debug_print()
+                        pkt.debug_print()
                         sender.on_packet_acked(pkt)
                         # debug_print('Ack packet at {}'.format(self.cur_time))
                         # log packet acked
-                        sender.schedule_send(on_ack=True)
+                        # sender.schedule_send(on_ack=True)
                         if self.record_pkt_log:
                             self.pkt_log.append(
                                 [self.cur_time, pkt.pkt_id, 'acked',
                                  pkt.pkt_size, pkt.cur_latency,
                                  pkt.queue_delay, self.links[0].pkt_in_queue,
-                                 sender.rate * BYTES_PER_PACKET * 8,
-                                 self.links[0].get_bandwidth(self.cur_time) * BYTES_PER_PACKET * 8])
+                                 sender.pacing_rate * BYTES_PER_PACKET,
+                                 self.links[0].get_bandwidth(self.cur_time) * BYTES_PER_PACKET * BITS_PER_BYTE])
                 else:  # in acklink
                     if self.record_pkt_log:
                         self.pkt_log.append(
                             [self.cur_time, pkt.pkt_id, 'arrived',
                              pkt.pkt_size, pkt.cur_latency, pkt.queue_delay,
                              self.links[0].pkt_in_queue,
-                             sender.rate * BYTES_PER_PACKET * 8,
-                             self.links[0].get_bandwidth(self.cur_time) * BYTES_PER_PACKET * 8])
-                    # new_event_queue_delay += self.links[pkt.next_hop].get_cur_queue_delay(
-                    #     self.cur_time)
+                             sender.pacing_rate * BYTES_PER_PACKET,
+                             self.links[0].get_bandwidth(self.cur_time) * BYTES_PER_PACKET * BITS_PER_BYTE])
                     link_prop_latency, q_delay = self.links[pkt.next_hop].get_cur_latency(
                         self.cur_time)
                     # link_latency *= self.env.current_trace.get_delay_noise_replay(self.cur_time)
@@ -179,19 +145,20 @@ class Network:
             elif pkt.event_type == EVENT_TYPE_SEND:  # in datalink
                 if pkt.next_hop == 0:
                     if sender.can_send_packet():
-                        # sender.debug_print()
+                        sender.debug_print()
                         sender.on_packet_sent(pkt)
                         # pkt.debug_print()
                         # print('Send packet at {}'.format(self.cur_time))
-                        sender.schedule_send()
+                        # sender.schedule_send()
                         if self.record_pkt_log:
                             self.pkt_log.append(
                                 [self.cur_time, pkt.pkt_id, 'sent',
                                  pkt.pkt_size, pkt.cur_latency,
                                  pkt.queue_delay, self.links[0].pkt_in_queue,
-                                 sender.rate * BYTES_PER_PACKET * 8,
-                                 self.links[0].get_bandwidth(self.cur_time) * BYTES_PER_PACKET * 8])
+                                 sender.pacing_rate * BYTES_PER_PACKET,
+                                 self.links[0].get_bandwidth(self.cur_time) * BYTES_PER_PACKET * BITS_PER_BYTE])
                         push_new_event = True
+                    sender.schedule_send()
                 else:
                     push_new_event = True
 
@@ -217,8 +184,5 @@ class Network:
                 #     sender.queue_delay_samples.append(new_event_queue_delay)
 
             if push_new_event:
-                # heapq.heappush(self.q, (new_event_time, sender, new_event_type,
-                #                         new_next_hop, new_latency, new_dropped,
-                #                         event_id, rto, new_event_queue_delay))
                 heapq.heappush(self.q, pkt)
         return
