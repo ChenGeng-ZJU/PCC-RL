@@ -71,7 +71,7 @@ def test_on_traces(traces, save_dirs, seed):
     rewards = []
     pkt_logs = []
     from tqdm import tqdm
-    for trace, save_dir in tqdm(zip(traces, save_dirs)):
+    for trace, save_dir in tqdm(zip(traces, save_dirs), total=len(traces)):
         reward, pkt_log = test_on_trace(trace, save_dir, seed)
         rewards.append(reward)
         pkt_logs.append(pkt_log)

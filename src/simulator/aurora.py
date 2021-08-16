@@ -277,7 +277,7 @@ class Aurora():
         results = []
         pkt_logs = []
         from tqdm import tqdm
-        for trace, save_dir in tqdm(zip(traces, save_dirs)):
+        for trace, save_dir in tqdm(zip(traces, save_dirs), total=len(traces)):
             ts_list, reward_list, loss_list, tput_list, delay_list, \
                 send_rate_list, action_list, obs_list, mi_list, pkt_log = self.test(
                     trace, save_dir)

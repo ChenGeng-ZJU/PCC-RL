@@ -25,11 +25,11 @@ def compare_metric(model_path, name, save_dir, vals2test, key, heuristic = "cubi
     cubic1_rewards = []
     cubic1_errors = []
     duration_range=(30, 30)
-    bw_range=(1, 6)
-    delay_range=(30, 50)
-    lr_range=(0.000, 0.000)
-    queue_size_range=(10, 60)
-    T_s_range=(1, 3)
+    bw_range=(1, 7)
+    delay_range=(5, 55)
+    lr_range=(0.000, 0.0050)
+    queue_size_range=(10, 70)
+    T_s_range=(1, 4)
     delay_noise_range=(0, 0)
     for bwi, bw in enumerate(tqdm(vals2test[key])):
         val = bw
@@ -54,7 +54,7 @@ def compare_metric(model_path, name, save_dir, vals2test, key, heuristic = "cubi
                                 queue_size_range=queue_size_range,
                                 T_s_range=T_s_range,
                                 delay_noise_range=delay_noise_range,
-                                constant_bw=False) for _ in range(15)]
+                                constant_bw=False) for _ in range(5)]
         tmpsvp = osp.join('tmp', '{}_{}_{}'.format(name, key, bwi))
         Path(tmpsvp).mkdir(exist_ok=True, parents=True)
         syn_traces[-1].dump(osp.join(tmpsvp, "trace.json"))
@@ -120,11 +120,11 @@ def compare(model_path, name, heuristc='cubic'):
 
     vals2test = {
         "bandwidth": [1, 2, 3, 4, 5, 6],
-        "delay": [5, 50, 100, 150, 200],
-        "loss": [0, 0.01, 0.02, 0.03, 0.04, 0.05],
-        "queue": [2, 10, 50, 100, 150, 200],
-        "T_s": [0, 1, 2, 3, 4, 5, 6],
-        "delay_noise": [0, 20, 40, 60, 80, 100],
+        "delay": [5, 15, 25, 35, 45, 55],
+        "loss": [0, 0.001, 0.002, 0.003, 0.004, 0.005],
+        "queue": [10, 20, 30, 40, 50, 60],
+        "T_s": [1, 1.5, 2, 2.5, 3, 3.5, 4],
+        "delay_noise": [0, 1, 2, 3, 4, 5],
     }
 
     for key in vals2test:
