@@ -19,21 +19,20 @@ from simulator.evaluate_bbr import test_on_traces as test_bbr_on_traces
 from simulator.trace import generate_trace, Trace
 from tqdm import tqdm
 
-def compare_metric(model_path, name, save_dir, vals2test, key, heuristic = "cubic"):
+def compare_metric(model_path, name, save_dir, vals2test, key):
+    f = open(os.path.join(save_dir, 'syn_vs_real_traces_{}.csv'.format(name)), 'w', 1)
+    writer = csv.writer(f, lineterminator='\n')
+    writer.writerow(['syn_reward', 'syn_reward_err', 'cubic_syn_reward', 'cubic_syn_reward_err', 'bbr_syn_reward', 'bbr_syn_reward_err'])
     aurora_rewards = []
     aurora_errors = []
     cubic1_rewards = []
     cubic1_errors = []
-    # duration_range=(10, 10)
-    # bw_range=(1, 1)
-    # delay_range=(100, 100)
-    # lr_range=(0, 0)
-    # queue_size_range=(10, 10)
-    # T_s_range=(0, 0)
+    bbr1_rewards = []
+    bbr1_errors = []
     duration_range=(10, 10)
-    bw_range=(10, 10)
-    delay_range=(5, 5)
-    lr_range=(0.05, 0.05)
+    bw_range=(1, 1)
+    delay_range=(100, 100)
+    lr_range=(0, 0)
     queue_size_range=(10, 10)
     T_s_range=(0, 0)
     delay_noise_range=(0, 0)
@@ -68,10 +67,8 @@ def compare_metric(model_path, name, save_dir, vals2test, key, heuristic = "cubi
         aurora_udr_big = Aurora(seed=20, log_dir=tmpsvp, timesteps_per_actorbatch=10,
                                 pretrained_model_path=model_path, delta_scale=1)
 
-        if heuristic == 'cubic':
-            cubic_rewards, _ = test_cubic_on_traces(syn_traces, [tmpsvp]*len(syn_traces), seed=20)
-        else:
-            cubic_rewards, _ = test_bbr_on_traces(syn_traces, [tmpsvp]*len(syn_traces), seed=20)
+        cubic_rewards, _ = test_cubic_on_traces(syn_traces, [tmpsvp]*len(syn_traces), seed=20)
+        bbr_rewards, _ = test_bbr_on_traces(syn_traces, [tmpsvp]*len(syn_traces), seed=20)
 
         results, _ = aurora_udr_big.test_on_traces(
                 syn_traces, [tmpsvp]*len(syn_traces))
@@ -79,25 +76,29 @@ def compare_metric(model_path, name, save_dir, vals2test, key, heuristic = "cubi
         avg_cubic_rewards = np.mean([np.mean(r) for r in cubic_rewards])
         avg_cubic_rewards_errs = compute_std_of_mean([np.mean(r) for r in cubic_rewards])
 
+        avg_bbr_rewards = np.mean([np.mean(r) for r in bbr_rewards])
+        avg_bbr_rewards_errs = compute_std_of_mean([np.mean(r) for r in bbr_rewards])
+
         udr_big_rewards = np.array([np.mean([row[1] for row in result]) for result in results])
         avg_udr_big_rewards = np.mean(udr_big_rewards)
         avg_udr_big_rewards_errs = compute_std_of_mean([np.mean(r) for r in udr_big_rewards])
 
-        with open(os.path.join(save_dir, 'syn_vs_real_traces_{}.csv'.format(name)), 'w', 1) as f:
-            writer = csv.writer(f, lineterminator='\n')
-            writer.writerow(['syn_reward', 'syn_reward_err', 'cubic_syn_reward', 'cubic_syn_reward_err'])
-            writer.writerow([avg_udr_big_rewards, avg_udr_big_rewards_errs,
-                            avg_cubic_rewards, avg_cubic_rewards_errs])
+        writer.writerow([avg_udr_big_rewards, avg_udr_big_rewards_errs,
+                        avg_cubic_rewards, avg_cubic_rewards_errs,
+                        avg_bbr_rewards, avg_bbr_rewards_errs])
         aurora_rewards.append(avg_udr_big_rewards)
         aurora_errors.append(avg_udr_big_rewards_errs)
         cubic1_rewards.append(avg_cubic_rewards)
         cubic1_errors.append(avg_cubic_rewards_errs)
+        bbr1_rewards.append(avg_bbr_rewards)
+        bbr1_errors.append(avg_bbr_rewards_errs)
 
     width = 0.7
     fig, ax = plt.subplots()
-    ax.bar([i*3 for i in range(len(aurora_rewards))], aurora_rewards, width, yerr=aurora_errors, color="C4", alpha = 1, label="DRL-based Policy")
-    ax.bar([i*3 + 1 for i in range(len(cubic1_rewards))], cubic1_rewards, width, yerr=cubic1_errors, color="C0", alpha = 1, label="Rule-based Policy({})".format(heuristic))
-    ax.set_xticks([i*3 for i in range(len(aurora_rewards))])
+    ax.bar([i*4 for i in range(len(aurora_rewards))], aurora_rewards, width, yerr=aurora_errors, color="C4", alpha = 1, label="DRL-based Policy")
+    ax.bar([i*4 + 1 for i in range(len(cubic1_rewards))], cubic1_rewards, width, yerr=cubic1_errors, color="C0", alpha = 1, label="Rule-based Policy({})".format('cubic'))
+    ax.bar([i*4 + 2 for i in range(len(bbr1_rewards))], bbr1_rewards, width, yerr=bbr1_errors, color="C1", alpha = 1, label="Rule-based Policy({})".format('bbr'))
+    ax.set_xticks([i*4+1 for i in range(len(aurora_rewards))])
     ax.set_xticklabels(vals2test[key])
     ax.set_ylim(-500, 800)
     plt.xlabel(key)
@@ -106,7 +107,8 @@ def compare_metric(model_path, name, save_dir, vals2test, key, heuristic = "cubi
     ax.legend()
     plt.savefig(os.path.join(save_dir, 'syn_vs_real_traces_{}.jpg'.format(name)), bbox_inches='tight')
     plt.close()
-    plt.show()
+    # plt.show()
+    f.close()
 
 def compare(model_path, name, heuristc='cubic'):
     plt.style.use('seaborn-deep')
@@ -134,7 +136,7 @@ def compare(model_path, name, heuristc='cubic'):
     }
 
     for key in vals2test:
-        compare_metric(MODEL_PATH, name + "_" + key, SAVE_DIR, vals2test, key, heuristc)
+        compare_metric(MODEL_PATH, name + "_" + key, SAVE_DIR, vals2test, key)
 
 
 if __name__ == "__main__":

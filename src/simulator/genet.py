@@ -1,4 +1,5 @@
 import argparse
+import csv
 import os.path as osp
 import os
 import time
@@ -96,6 +97,25 @@ class RandomizationRanges:
 #         """Does whatever you want with the event and `BayesianOptimization` instance."""
 #         print("Event `{}` was observed".format(event))
 
+def find_best_model(model_path, boit=0):
+    best_step = -1
+    best_reward = -1
+    with open(osp.join(model_path, "validation_log_{}.csv".format(boit)), 'r') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            # breakpoint()
+            step, _, reward, _, _, _, _, _ = row[0].split('\t')
+            if step=="n_calls":
+                continue
+            reward = float(reward)
+            step = int(float(step))
+            # print(step)
+            if best_step == -1:
+                best_step, best_reward = step, reward
+            elif reward > best_reward:
+                best_step, best_reward = step, reward
+    return osp.join(model_path, "bo_{}_model_step_{}.ckpt".format(boit, best_step)), best_reward
+
 
 class Genet:
     """Genet implementation with Bayesian Optimization.
@@ -125,11 +145,20 @@ class Genet:
         #     event=Events.OPTIMIZATION_STEP,
         #     subscriber=my_observer,
         #     callback=None)
+    
+    def update_rl_model(self, boit):
+        print("updating best model...")
+        best_model, best_reward = find_best_model(self.save_dir, boit)
+        print("using model: {}, which has reward {}".format(best_model, best_reward))
+        self.rl_method = Aurora(seed=self.seed, log_dir=self.save_dir,
+                                pretrained_model_path=best_model,
+                                timesteps_per_actorbatch=7200, delta_scale=1)
 
     def train(self, heu = 'cubic'):
         """Genet trains rl_method."""
         from time import time
         for i in range(120):
+            self.seed += 1
             print("start finding param")
             t1 = time()
             best_param = self.find_best_param()
@@ -144,6 +173,7 @@ class Genet:
             # self.rl_method.train(i, self.cur_config_file, 10000, 500)
             # self.rl_method.train(self.cur_config_file, 800, 500)
             t3 = time()
+            self.update_rl_model(i)
             print("finish a training, time elapsed = {}".format(t3 - t2))
             print("Start Ploting...")
             model_path = osp.join(self.save_dir, "bo_{}_model_step_36000.ckpt".format(i))
@@ -202,6 +232,7 @@ def black_box_function(bandwidth, delay, queue, loss, T_s, heuristic, rl_method)
 
 
 def main():
+    print(find_best_model('/data/gengchen/PCC-RL/data/udr-large-genet-081700', 0))
     args = parse_args()
     set_seed(args.seed)
     Path(args.save_dir).mkdir(exist_ok=True, parents=True)
