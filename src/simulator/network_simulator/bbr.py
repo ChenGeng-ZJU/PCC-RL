@@ -29,6 +29,8 @@ TCP_INIT_CWND = 10
 BBR_MIN_PIPE_CWND = 4  # packets
 BBR_GAIN_CYCLE_LEN = 8
 
+DEBUG_ON = False
+
 
 class BBRPacket(packet.Packet):
     def __init__(self, ts: float, sender: Sender, pkt_id: int):
@@ -39,13 +41,14 @@ class BBRPacket(packet.Packet):
         self.is_app_limited = False
 
     def debug_print(self):
-        print("Event {}: ts={}, type={}, dropped={}, cur_latency: {}, "
-              "delivered={}, delivered_time={}, first_sent_time={}, "
-              "pkt_in_flight: {}".format(
-                  self.pkt_id, self.ts, self.event_type, self.dropped,
-                  self.cur_latency, self.delivered, self.delivered_time,
-                  self.first_sent_time,
-                  self.sender.bytes_in_flight / BYTES_PER_PACKET))
+        if DEBUG_ON:
+            print("Event {}: ts={}, type={}, dropped={}, cur_latency: {}, "
+                "delivered={}, delivered_time={}, first_sent_time={}, "
+                "pkt_in_flight: {}".format(
+                    self.pkt_id, self.ts, self.event_type, self.dropped,
+                    self.cur_latency, self.delivered, self.delivered_time,
+                    self.first_sent_time,
+                    self.sender.bytes_in_flight / BYTES_PER_PACKET))
 
 
 class RateSample:
@@ -76,7 +79,8 @@ class RateSample:
         self.losses = 0
 
     def debug_print(self):
-        print("delivery_rate: {}, \nis_app_limited: {}, \ninterval: {},\n delivered: {},\n prior_delivered: {}".format(
+        if DEBUG_ON:
+            print("delivery_rate: {}, \nis_app_limited: {}, \ninterval: {},\n delivered: {},\n prior_delivered: {}".format(
             self.delivery_rate, self.is_app_limited, self.interval, self.delivered, self.prior_delivered))
 
 
@@ -602,30 +606,31 @@ class BBRSender(Sender):
         self.init()
 
     def debug_print(self):
-        print("ts: {:.3f}, round_count: {}, pacing_gain:{}, "
-              "pacing_rate: {:.3f}Mbps, next_send_time: {:.3f}, cwnd_gain: {}, "
-              "cwnd: {}, target_cwnd: {}, bbr_state: {}, btlbw: {:.3f}Mbps, "
-              "rtprop: {:.3f}, rs.delivery_rate: {:.3f}Mbps, "
-              "can_send_packet: {}, pkt_in_flight: {}, full_bw: {:.3f}Mbps, "
-              "full_bw_count: {}, filled_pipe: {}, C.delivered: {}, "
-              "next_round_delivered: {}, round_start: {}, prior_delivered: {}".format(
-                  self.get_cur_time(), self.round_count, self.pacing_gain,
-                  self.pacing_rate * BITS_PER_BYTE / 1e6, self.next_send_time,
-                  self.cwnd_gain, self.cwnd, self.target_cwnd, self.state.value,
-                  self.btlbw * BITS_PER_BYTE / 1e6, self.rtprop,
-                  self.rs.delivery_rate * BITS_PER_BYTE / 1e6,
-                  self.can_send_packet(),
-                  self.bytes_in_flight / BYTES_PER_PACKET,
-                  self.full_bw * BITS_PER_BYTE / 1e6, self.full_bw_count,
-                  self.filled_pipe, self.conn_state.delivered,
-                  self.next_round_delivered, self.round_start,
-                  self.rs.prior_delivered))
+        if DEBUG_ON:
+            print("ts: {:.3f}, round_count: {}, pacing_gain:{}, "
+                "pacing_rate: {:.3f}Mbps, next_send_time: {:.3f}, cwnd_gain: {}, "
+                "cwnd: {}, target_cwnd: {}, bbr_state: {}, btlbw: {:.3f}Mbps, "
+                "rtprop: {:.3f}, rs.delivery_rate: {:.3f}Mbps, "
+                "can_send_packet: {}, pkt_in_flight: {}, full_bw: {:.3f}Mbps, "
+                "full_bw_count: {}, filled_pipe: {}, C.delivered: {}, "
+                "next_round_delivered: {}, round_start: {}, prior_delivered: {}".format(
+                    self.get_cur_time(), self.round_count, self.pacing_gain,
+                    self.pacing_rate * BITS_PER_BYTE / 1e6, self.next_send_time,
+                    self.cwnd_gain, self.cwnd, self.target_cwnd, self.state.value,
+                    self.btlbw * BITS_PER_BYTE / 1e6, self.rtprop,
+                    self.rs.delivery_rate * BITS_PER_BYTE / 1e6,
+                    self.can_send_packet(),
+                    self.bytes_in_flight / BYTES_PER_PACKET,
+                    self.full_bw * BITS_PER_BYTE / 1e6, self.full_bw_count,
+                    self.filled_pipe, self.conn_state.delivered,
+                    self.next_round_delivered, self.round_start,
+                    self.rs.prior_delivered))
 
 
 class BBR:
     cc_name = 'bbr'
 
-    def __init__(self, save_dir: str, record_pkt_log: bool = False,
+    def __init__(self, save_dir: str, record_pkt_log: bool = True,
                  seed: int = 42):
         self.save_dir = save_dir
         self.record_pkt_log = record_pkt_log

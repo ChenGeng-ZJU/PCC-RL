@@ -152,7 +152,7 @@ class Genet:
         print("using model: {}, which has reward {}".format(best_model, best_reward))
         self.rl_method = Aurora(seed=self.seed, log_dir=self.save_dir,
                                 pretrained_model_path=best_model,
-                                timesteps_per_actorbatch=7200, delta_scale=1)
+                                timesteps_per_actorbatch=1800, delta_scale=1)
 
     def train(self, heu = 'cubic'):
         """Genet trains rl_method."""
@@ -165,21 +165,20 @@ class Genet:
             t2 = time()
             print("end finding parameter, time elpased: {}".format(t2-t1))
             print(best_param)
-            self.rand_ranges.add_ranges([best_param['params']])
+            self.rand_ranges.add_ranges([best_param['params']], prob=0.05)
             self.cur_config_file = os.path.join(
                 self.save_dir, "bo_"+str(i) + ".json")
             self.rand_ranges.dump(self.cur_config_file)
-            self.rl_method.train(i, self.cur_config_file, 3.6e4, 500)
+            self.rl_method.train(i, self.cur_config_file, 30e4, 500)
             # self.rl_method.train(i, self.cur_config_file, 10000, 500)
             # self.rl_method.train(self.cur_config_file, 800, 500)
             t3 = time()
             self.update_rl_model(i)
             print("finish a training, time elapsed = {}".format(t3 - t2))
             print("Start Ploting...")
-            model_path = osp.join(self.save_dir, "bo_{}_model_step_36000.ckpt".format(i))
-            # model_path = osp.join(self.save_dir, "bo_{}_model_step_7200.ckpt".format(i))
+            best_model, best_reward = find_best_model(self.save_dir, i)
             name = self.save_dir.split('/')[-1] + "_bo_{}".format(i+1)
-            compare(model_path, name, heu)
+            compare(best_model, name)
             print("End Ploting...")
             
 
@@ -189,7 +188,7 @@ class Genet:
                 bandwidth, delay, queue, loss, T_s,
                 heuristic=self.heuristic, rl_method=self.rl_method),
             pbounds=self.pbounds, random_state=self.seed)
-        optimizer.maximize(init_points=8, n_iter=2, kappa=20, xi=0.1)
+        optimizer.maximize(init_points=16, n_iter=4, kappa=20, xi=0.1)
         best_param = optimizer.max
         return best_param
 
@@ -232,7 +231,7 @@ def black_box_function(bandwidth, delay, queue, loss, T_s, heuristic, rl_method)
 
 
 def main():
-    print(find_best_model('/data/gengchen/PCC-RL/data/udr-large-genet-081700', 0))
+    # print(find_best_model('/data/gengchen/PCC-RL/data/udr-large-genet-081700', 0))
     args = parse_args()
     set_seed(args.seed)
     Path(args.save_dir).mkdir(exist_ok=True, parents=True)
@@ -240,16 +239,18 @@ def main():
 
     cubic = Cubic(args.save_dir, args.seed)
     bbr = BBR(args.save_dir)
+    pre_model, _ = find_best_model(args.model_path)
+    print(pre_model)
     aurora = Aurora(seed=args.seed, log_dir=args.save_dir,
-                    pretrained_model_path=args.model_path,
-                    timesteps_per_actorbatch=7200, delta_scale=1)
+                    pretrained_model_path=pre_model,
+                    timesteps_per_actorbatch=1800, delta_scale=1)
     name = args.save_dir.split('/')[-1] + "_BeforeBO"
     if not args.bbr:
-        compare(args.model_path, name)
+        compare(pre_model, name)
         genet = Genet(args.config_file, args.save_dir, black_box_function, cubic, aurora)
         genet.train()
     else:
-        compare(args.model_path, name, "bbr")
+        compare(pre_model, name)
         print("using bbr")
         genet = Genet(args.config_file, args.save_dir, black_box_function, bbr, aurora)
         genet.train("bbr")

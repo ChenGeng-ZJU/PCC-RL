@@ -62,8 +62,9 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
 
     def __init__(self, itx, aurora, check_freq: int, log_dir: str, val_traces: List = [],
                  verbose=0, patience=10, steps_trained=0, config_file=None,
-                 tot_trace_cnt=100, update_training_traces_freq=5):
+                 tot_trace_cnt=100, update_training_traces_freq=5, total_timesteps = 0):
         super(SaveOnBestTrainingRewardCallback, self).__init__(verbose)
+        self.progress_bar = tqdm(total=total_timesteps)
         self.aurora = aurora
         self.check_freq = check_freq
         self.log_dir = log_dir
@@ -97,7 +98,8 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
             os.makedirs(self.save_path, exist_ok=True)
 
     def _on_step(self) -> bool:
-        print("Steps trained = {}".format(self.steps_trained))
+        # print("Steps trained = {}".format(self.steps_trained))
+        self.progress_bar.update(1)
         self.steps_trained += 1
         if self.n_calls % self.check_freq == 0:
             # self.val_times += 1
@@ -269,15 +271,14 @@ class Aurora():
             self, check_freq=self.timesteps_per_actorbatch, log_dir=self.log_dir,
             steps_trained=self.steps_trained, val_traces=validation_traces,
             config_file=config_file, tot_trace_cnt=tot_trace_cnt,
-            update_training_traces_freq=10)
+            update_training_traces_freq=10, total_timesteps = total_timesteps)
         self.model.learn(total_timesteps=total_timesteps,
                          tb_log_name=tb_log_name, callback=callback)
 
     def test_on_traces(self, traces: List[Trace], save_dirs: List[str]):
         results = []
         pkt_logs = []
-        from tqdm import tqdm
-        for trace, save_dir in tqdm(zip(traces, save_dirs), total=len(traces)):
+        for trace, save_dir in zip(traces, save_dirs):
             ts_list, reward_list, loss_list, tput_list, delay_list, \
                 send_rate_list, action_list, obs_list, mi_list, pkt_log = self.test(
                     trace, save_dir)

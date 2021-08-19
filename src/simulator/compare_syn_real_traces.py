@@ -13,13 +13,14 @@ import numpy as np
 
 from common.utils import set_seed, read_json_file, compute_std_of_mean
 from simulator.aurora import Aurora
-from simulator.evaluate_cubic import test_on_trace as test_cubic_on_trace
 from simulator.evaluate_cubic import test_on_traces as test_cubic_on_traces
 from simulator.evaluate_bbr import test_on_traces as test_bbr_on_traces
 from simulator.trace import generate_trace, Trace
 from tqdm import tqdm
+from pathlib import Path
 
 def compare_metric(model_path, name, save_dir, vals2test, key):
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
     f = open(os.path.join(save_dir, 'syn_vs_real_traces_{}.csv'.format(name)), 'w', 1)
     writer = csv.writer(f, lineterminator='\n')
     writer.writerow(['syn_reward', 'syn_reward_err', 'cubic_syn_reward', 'cubic_syn_reward_err', 'bbr_syn_reward', 'bbr_syn_reward_err'])
@@ -29,17 +30,17 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
     cubic1_errors = []
     bbr1_rewards = []
     bbr1_errors = []
-    duration_range=(10, 10)
+    duration_range=(1, 10)
     bw_range=(1, 1)
     delay_range=(100, 100)
     lr_range=(0, 0)
     queue_size_range=(10, 10)
     T_s_range=(0, 0)
     delay_noise_range=(0, 0)
-    for bwi, bw in enumerate(tqdm(vals2test[key])):
+    for bwi, bw in enumerate(tqdm(vals2test[key], desc=key)):
         val = bw
         if key == 'bandwidth':
-            bw_range = (val, val)
+            bw_range = (1, val)
         elif key == 'delay':
             delay_range = (val, val)
         elif key == 'loss':
@@ -59,7 +60,7 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
                                 queue_size_range=queue_size_range,
                                 T_s_range=T_s_range,
                                 delay_noise_range=delay_noise_range,
-                                constant_bw=False) for _ in range(5)]
+                                constant_bw=False) for _ in range(1)]
         tmpsvp = osp.join('tmp', '{}_{}_{}'.format(name, key, bwi))
         Path(tmpsvp).mkdir(exist_ok=True, parents=True)
         syn_traces[-1].dump(osp.join(tmpsvp, "trace.json"))
@@ -109,17 +110,17 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
     plt.close()
     # plt.show()
     f.close()
+    return np.array(aurora_rewards).mean()
 
-def compare(model_path, name, heuristc='cubic'):
+def compare(model_path, name):
     plt.style.use('seaborn-deep')
-    plt.rcParams['font.family'] = 'Times New Roman'
+    # plt.rcParams['font.family'] = 'Times New Roman'
     plt.rcParams['font.size'] = 28
     plt.rcParams['axes.labelsize'] = 38
     plt.rcParams['legend.fontsize'] = 24
     plt.rcParams["figure.figsize"] = (11,6)
 
     rpath = "/data/gengchen/PCC-RL"
-    # MODEL_PATH = osp.join(rpath, "data/udr-large-081400/bo_2_model_step_201600.ckpt")
     MODEL_PATH = model_path
     SAVE_DIR = osp.join(rpath, 'figs')
     print(MODEL_PATH)
@@ -135,13 +136,25 @@ def compare(model_path, name, heuristc='cubic'):
         "delay_noise": [0, 20, 40, 60, 80, 100],
     }
 
+    reward = []
+    basename = '_'.join(name.split('_')[:-1])
     for key in vals2test:
-        compare_metric(MODEL_PATH, name + "_" + key, SAVE_DIR, vals2test, key)
+        reward.append(compare_metric(MODEL_PATH, name + "_" + key, osp.join(SAVE_DIR, basename, key), vals2test, key))
+    return np.array(reward).mean()
 
 
 if __name__ == "__main__":
     rpath = "/data/gengchen/PCC-RL"
-    model = osp.join(rpath, "data/udr-large-genet-081617/bo_9_model_step_36000.ckpt")
-    name = 'test' 
-    # compare(model, name)
-    compare_metric(model, name, osp.join(rpath, 'figs'), {'bandwidth': [10]}, 'bandwidth')
+    reward = []
+    for i in range(7200, 302400, 7200):
+        model = osp.join(rpath, "data", "udr-large-081815", "bo_0_model_step_{}.ckpt".format(i))
+        reward.append(compare(model, "udr-large-081815-step-{}".format(i)))
+    print(reward)
+    reward = np.array(reward)
+    np.save(osp.join(rpath, "figs", "result1.npy"), reward)
+
+    # for i in range(1, 20):
+    #     # model, reward = ge.find_best_model(osp.join(rpath, 'data/udr-large-genet-081801'), i)
+    #     # print(model)
+    #     name = 'udr-large-genet-test-bo{}'.format(i) 
+    #     # compare(model, name)
