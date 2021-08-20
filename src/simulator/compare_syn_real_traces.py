@@ -30,7 +30,7 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
     cubic1_errors = []
     bbr1_rewards = []
     bbr1_errors = []
-    duration_range=(1, 10)
+    duration_range=(10, 10)
     bw_range=(1, 1)
     delay_range=(100, 100)
     lr_range=(0, 0)
@@ -40,7 +40,7 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
     for bwi, bw in enumerate(tqdm(vals2test[key], desc=key)):
         val = bw
         if key == 'bandwidth':
-            bw_range = (1, val)
+            bw_range = (val, val)
         elif key == 'delay':
             delay_range = (val, val)
         elif key == 'loss':
@@ -145,16 +145,23 @@ def compare(model_path, name):
 
 if __name__ == "__main__":
     rpath = "/data/gengchen/PCC-RL"
-    reward = []
-    for i in range(7200, 302400, 7200):
-        model = osp.join(rpath, "data", "udr-large-081815", "bo_0_model_step_{}.ckpt".format(i))
-        reward.append(compare(model, "udr-large-081815-step-{}".format(i)))
-    print(reward)
-    reward = np.array(reward)
-    np.save(osp.join(rpath, "figs", "result1.npy"), reward)
+    name = "udr-large-genet-082010"
+    # compare(osp.join(rpath, "data", "udr-large-genet-082001", "bo_10_model_step_72000.ckpt"), "test-082001-10-72000")
+    # reward = []
+    # for i in range(7200, 302400, 7200):
+    #     model = osp.join(rpath, "data", "udr-large-081815", "bo_0_model_step_{}.ckpt".format(i))
+    #     reward.append(compare(model, "udr-large-081815-step-{}".format(i)))
+    # print(reward)
+    # reward = np.array(reward)
+    # np.save(osp.join(rpath, "figs", "result1.npy"), reward)
 
     # for i in range(1, 20):
     #     # model, reward = ge.find_best_model(osp.join(rpath, 'data/udr-large-genet-081801'), i)
     #     # print(model)
     #     name = 'udr-large-genet-test-bo{}'.format(i) 
     #     # compare(model, name)
+    for i in range(80):
+        compare(
+            osp.join(rpath, "data", name, "bo_{}_model_step_36000.ckpt".format(i)),
+            name+"_fix_bo_{}".format(i)
+        )

@@ -133,6 +133,8 @@ class PacketLog():
                 bin_id = cls.ts_to_bin_id(ts, first_ts, bin_size)
                 binwise_bytes_lost[bin_id] = binwise_bytes_lost.get(
                     bin_id, 0) + pkt_byte
+            elif pkt_type == 'arrived':
+                pass
             else:
                 raise RuntimeError(
                     "Unrecognized pkt_type {}!".format(pkt_type))

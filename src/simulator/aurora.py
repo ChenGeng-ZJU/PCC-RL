@@ -260,6 +260,10 @@ class Aurora():
         # generate validation traces
         validation_traces = generate_traces(
             config_file, 10, duration=10, constant_bw=False)
+        for i, val_trace in enumerate(validation_traces):
+            from pathlib import Path
+            Path(os.path.join(self.log_dir, "val_trace")).mkdir(exist_ok=True, parents=True)
+            val_trace.dump(os.path.join(self.log_dir, "val_trace", "%02d.json"%i))
         env = gym.make('PccNs-v0', traces=training_traces,
                        train_flag=True, delta_scale=self.delta_scale, config_file=config_file)
         env.seed(self.seed)

@@ -158,27 +158,28 @@ class Genet:
         """Genet trains rl_method."""
         from time import time
         for i in range(120):
-            self.seed += 1
+            # self.seed += 1
             print("start finding param")
             t1 = time()
             best_param = self.find_best_param()
             t2 = time()
             print("end finding parameter, time elpased: {}".format(t2-t1))
             print(best_param)
-            self.rand_ranges.add_ranges([best_param['params']], prob=0.05)
+            self.rand_ranges.add_ranges([best_param['params']])
             self.cur_config_file = os.path.join(
                 self.save_dir, "bo_"+str(i) + ".json")
             self.rand_ranges.dump(self.cur_config_file)
-            self.rl_method.train(i, self.cur_config_file, 30e4, 500)
+            self.rl_method.train(i, self.cur_config_file, 3.6e4, 500)
             # self.rl_method.train(i, self.cur_config_file, 10000, 500)
             # self.rl_method.train(self.cur_config_file, 800, 500)
             t3 = time()
-            self.update_rl_model(i)
+            # self.update_rl_model(i)
             print("finish a training, time elapsed = {}".format(t3 - t2))
             print("Start Ploting...")
-            best_model, best_reward = find_best_model(self.save_dir, i)
+            # best_model, best_reward = find_best_model(self.save_dir, i)
             name = self.save_dir.split('/')[-1] + "_bo_{}".format(i+1)
-            compare(best_model, name)
+            model_path = osp.join(self.save_dir, "bo_{}_model_step_{}.ckpt".format(i, 36000))
+            compare(model_path, name)
             print("End Ploting...")
             
 
@@ -188,7 +189,7 @@ class Genet:
                 bandwidth, delay, queue, loss, T_s,
                 heuristic=self.heuristic, rl_method=self.rl_method),
             pbounds=self.pbounds, random_state=self.seed)
-        optimizer.maximize(init_points=16, n_iter=4, kappa=20, xi=0.1)
+        optimizer.maximize(init_points=13, n_iter=2, kappa=20, xi=0.1)
         best_param = optimizer.max
         return best_param
 
@@ -239,11 +240,12 @@ def main():
 
     cubic = Cubic(args.save_dir, args.seed)
     bbr = BBR(args.save_dir)
-    pre_model, _ = find_best_model(args.model_path)
+    # pre_model, _ = find_best_model(args.model_path)
+    pre_model = args.model_path
     print(pre_model)
     aurora = Aurora(seed=args.seed, log_dir=args.save_dir,
                     pretrained_model_path=pre_model,
-                    timesteps_per_actorbatch=1800, delta_scale=1)
+                    timesteps_per_actorbatch=7200, delta_scale=1)
     name = args.save_dir.split('/')[-1] + "_BeforeBO"
     if not args.bbr:
         compare(pre_model, name)

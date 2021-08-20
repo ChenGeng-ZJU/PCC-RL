@@ -44,7 +44,7 @@ def parse_args():
 
 def test_on_trace(trace, save_dir, seed):
     bbr = BBR(save_dir)
-    return bbr.test(trace)
+    return bbr.test(trace, save_dir)
 
 
 def test_on_traces(traces, save_dirs, seed):
