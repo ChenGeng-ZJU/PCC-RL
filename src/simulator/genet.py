@@ -173,12 +173,13 @@ class Genet:
             # self.rl_method.train(i, self.cur_config_file, 10000, 500)
             # self.rl_method.train(self.cur_config_file, 800, 500)
             t3 = time()
-            # self.update_rl_model(i)
+            self.update_rl_model(i)
             print("finish a training, time elapsed = {}".format(t3 - t2))
             print("Start Ploting...")
-            # best_model, best_reward = find_best_model(self.save_dir, i)
+            best_model, best_reward = find_best_model(self.save_dir, i)
             name = self.save_dir.split('/')[-1] + "_bo_{}".format(i+1)
-            model_path = osp.join(self.save_dir, "bo_{}_model_step_{}.ckpt".format(i, 36000))
+            # model_path = osp.join(self.save_dir, "bo_{}_model_step_{}.ckpt".format(i, 36000))
+            model_path = best_model
             compare(model_path, name)
             print("End Ploting...")
             
@@ -245,7 +246,7 @@ def main():
     print(pre_model)
     aurora = Aurora(seed=args.seed, log_dir=args.save_dir,
                     pretrained_model_path=pre_model,
-                    timesteps_per_actorbatch=7200, delta_scale=1)
+                    timesteps_per_actorbatch=1800, delta_scale=1)
     name = args.save_dir.split('/')[-1] + "_BeforeBO"
     if not args.bbr:
         compare(pre_model, name)

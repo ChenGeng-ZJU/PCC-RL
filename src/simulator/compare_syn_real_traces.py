@@ -60,7 +60,7 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
                                 queue_size_range=queue_size_range,
                                 T_s_range=T_s_range,
                                 delay_noise_range=delay_noise_range,
-                                constant_bw=False) for _ in range(1)]
+                                constant_bw=False) for _ in range(5)]
         tmpsvp = osp.join('tmp', '{}_{}_{}'.format(name, key, bwi))
         Path(tmpsvp).mkdir(exist_ok=True, parents=True)
         syn_traces[-1].dump(osp.join(tmpsvp, "trace.json"))

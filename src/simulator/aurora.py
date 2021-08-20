@@ -257,9 +257,13 @@ class Aurora():
 
         training_traces = generate_traces(config_file, tot_trace_cnt,
                                           duration=10, constant_bw=False)
+        for i, train_trace in enumerate(training_traces):
+            from pathlib import Path
+            Path(os.path.join(self.log_dir, "train_trace")).mkdir(exist_ok=True, parents=True)
+            train_trace.dump(os.path.join(self.log_dir, "train_trace", "%03d.json"%i))
         # generate validation traces
         validation_traces = generate_traces(
-            config_file, 10, duration=10, constant_bw=False)
+            config_file, 100, duration=10, constant_bw=False)
         for i, val_trace in enumerate(validation_traces):
             from pathlib import Path
             Path(os.path.join(self.log_dir, "val_trace")).mkdir(exist_ok=True, parents=True)

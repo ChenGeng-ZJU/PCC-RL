@@ -628,11 +628,13 @@ class BBRSender(Sender):
 class BBR:
     cc_name = 'bbr'
 
-    def __init__(self, record_pkt_log: bool = False, seed: int = 42):
+    def __init__(self, save_dir, record_pkt_log: bool = False, seed: int = 42):
+        self.save_dir = save_dir
         self.record_pkt_log = record_pkt_log
         set_seed(seed)
 
-    def test(self, trace: Trace, save_dir: str) -> Tuple[float, float]:
+    def test(self, trace: Trace) -> Tuple[float, float]:
+        save_dir = self.save_dir
 
         links = [Link(trace), Link(trace)]
         senders = [BBRSender(0, 0)]
