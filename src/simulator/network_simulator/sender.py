@@ -17,7 +17,6 @@ class Sender:
 
     def __init__(self, sender_id: int, dest: int):
         """Create a sender object.
-
         Args
             sender_id: id of sender device.
             dest: id of destination device.

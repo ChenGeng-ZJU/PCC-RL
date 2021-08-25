@@ -152,7 +152,6 @@ class BBRMode(Enum):
 
 class BBRSender(Sender):
     """
-
     Reference:
         https://datatracker.ietf.org/doc/html/draft-cardwell-iccrg-bbr-congestion-control
         https://datatracker.ietf.org/doc/html/draft-cheng-iccrg-delivery-rate-estimation#section-3.1.3

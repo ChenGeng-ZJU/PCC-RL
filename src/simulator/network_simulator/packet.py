@@ -38,7 +38,6 @@ class Packet:
     @property
     def cur_latency(self) -> float:
         """Return Current latency experienced.
-
         Latency = propagation_delay + queue_delay
         """
         return self.queue_delay + self.propagation_delay

@@ -106,8 +106,8 @@ venv.bak/
 .vim
 results_*
 results
-data
-figs
+*data*
+*figs*
 src/simulator/aurora_tensorboard
 src/simulator/useless
 src/simulator_bkp
@@ -118,3 +118,5 @@ data*
 log*
 tmp*
 figs*
+*tmp*
+*log*

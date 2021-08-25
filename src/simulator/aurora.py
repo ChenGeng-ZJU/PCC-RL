@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import csv
 import logging
 import multiprocessing as mp
@@ -62,6 +63,7 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
     def __init__(self, aurora, check_freq: int, log_dir: str, val_traces: List = [],
                  verbose=0, steps_trained=0, config_file=None, tot_trace_cnt=100):
         super(SaveOnBestTrainingRewardCallback, self).__init__(verbose)
+        self.progress_bar = tqdm(total=total_timesteps)
         self.aurora = aurora
         self.check_freq = check_freq
         self.log_dir = log_dir
@@ -73,7 +75,7 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
         self.tot_trace_cnt=tot_trace_cnt
         if self.aurora.comm.Get_rank() == 0:
             self.val_log_writer = csv.writer(
-                open(os.path.join(log_dir, 'validation_log.csv'), 'w', 1),
+                open(os.path.join(log_dir, 'validation_log_{}.csv'.format(itx)), 'w', 1),
                 delimiter='\t', lineterminator='\n')
             self.val_log_writer.writerow(
                 ['n_calls', 'num_timesteps', 'mean_validation_reward', 'loss',
@@ -92,6 +94,9 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
             os.makedirs(self.save_path, exist_ok=True)
 
     def _on_step(self) -> bool:
+        # print("Steps trained = {}".format(self.steps_trained))
+        self.progress_bar.update(1)
+        self.steps_trained += 1
         if self.n_calls % self.check_freq == 0:
             # Retrieve training reward
             # x, y = ts2xy(load_results(self.log_dir), 'timesteps')
@@ -116,14 +121,13 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
                     saver = tf.train.Saver()
                     saver.save(
                         self.model.sess, os.path.join(
-                            self.save_path, "model_step_{}.ckpt".format(
-                                self.n_calls)))
+                            self.save_path, "bo_{}_model_step_{}.ckpt".format(self.itx, self.n_calls)))
                 avg_rewards = []
                 avg_losses = []
                 avg_tputs = []
                 avg_delays = []
                 avg_send_rates = []
-                for idx, val_trace in enumerate(self.val_traces):
+                for idx, val_trace in tqdm(enumerate(self.val_traces), total=len(self.val_traces)):
                     # print(np.mean(val_trace.bandwidths))
                     ts_list, val_rewards, loss_list, tput_list, delay_list, \
                         send_rate_list, action_list, obs_list, mi_list, pkt_log = self.aurora.test(
@@ -235,14 +239,18 @@ class Aurora():
                               tensorboard_log=tensorboard_log, n_cpu_tf_sess=1)
         self.timesteps_per_actorbatch = timesteps_per_actorbatch
 
-    def train(self, config_file,
+    def train(self, itx, config_file,
             # training_traces, validation_traces,
             total_timesteps, tot_trace_cnt,
               tb_log_name=""):
         assert isinstance(self.model, PPO1)
 
         training_traces = generate_traces(config_file, tot_trace_cnt,
-                                          duration=30, constant_bw=False)
+                                          duration=10, constant_bw=False)
+        for i, train_trace in enumerate(training_traces):
+            from pathlib import Path
+            Path(os.path.join(self.log_dir, "train_trace")).mkdir(exist_ok=True, parents=True)
+            train_trace.dump(os.path.join(self.log_dir, "train_trace", "%03d.json"%i))
         # generate validation traces
         validation_traces = generate_traces(
             config_file, 20, duration=30, constant_bw=False)
@@ -253,7 +261,7 @@ class Aurora():
         self.model.set_env(env)
 
         # Create the callback: check every n steps and save best model
-        callback = SaveOnBestTrainingRewardCallback(
+        callback = SaveOnBestTrainingRewardCallback(itx,
             self, check_freq=self.timesteps_per_actorbatch, log_dir=self.log_dir,
             steps_trained=self.steps_trained, val_traces=validation_traces,
             config_file=config_file, tot_trace_cnt=tot_trace_cnt)

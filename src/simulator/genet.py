@@ -1,7 +1,10 @@
 import argparse
+import csv
+import os.path as osp
 import os
 import time
 from typing import Callable, Dict, List, Set, Union
+from pathlib import Path
 
 import numpy as np
 from bayes_opt import BayesianOptimization
@@ -15,6 +18,8 @@ from simulator.aurora import Aurora
 from simulator.network_simulator.cubic import Cubic
 from simulator.network_simulator.bbr import BBR
 from simulator.trace import generate_trace
+from simulator.network_simulator.bbr import BBR
+from simulator.compare_syn_real_traces import compare
 
 MODEL_PATH = ""
 
@@ -31,9 +36,7 @@ def parse_args():
     parser.add_argument("--bo-rounds", type=int, default=30,
                         help="Rounds of BO.")
     parser.add_argument('--seed', type=int, default=42, help='seed')
-    parser.add_argument('--heuristic', type=str, default="cubic",
-                        choices=('bbr', 'cubic'),
-                        help='Congestion control rule based method.')
+    parser.add_argument('--bbr', action="store_true")
 
     return parser.parse_args()
 
@@ -104,6 +107,30 @@ class RandomizationRanges:
 #         """Does whatever you want with the event and `BayesianOptimization` instance."""
 #         print("Event `{}` was observed".format(event))
 
+def find_best_model(model_path, boit=0, omit_start=False):
+    best_step = -1
+    best_reward = -1
+    flag = False
+    with open(osp.join(model_path, "validation_log_{}.csv".format(boit)), 'r') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            # breakpoint()
+            step, _, reward, _, _, _, _, _ = row[0].split('\t')
+            if step=="n_calls":
+                continue
+            if omit_start:
+                if not flag:
+                    flag = True
+                    continue
+            reward = float(reward)
+            step = int(float(step))
+            # print(step)
+            if best_step == -1:
+                best_step, best_reward = step, reward
+            elif reward > best_reward:
+                best_step, best_reward = step, reward
+    return osp.join(model_path, "bo_{}_model_step_{}.ckpt".format(boit, best_step)), best_reward
+
 
 class Genet:
     """Genet implementation with Bayesian Optimization.
@@ -126,8 +153,7 @@ class Genet:
         self.rand_ranges = RandomizationRanges(config_file)
         self.param_names = self.rand_ranges.get_parameter_names()
         self.pbounds = self.rand_ranges.get_original_range()
-        if 'duration' in self.pbounds:
-            self.pbounds.pop('duration')
+        self.seed = seed
 
         self.save_dir = save_dir
         self.heuristic = heuristic
@@ -137,55 +163,73 @@ class Genet:
         #     event=Events.OPTIMIZATION_STEP,
         #     subscriber=my_observer,
         #     callback=None)
+    
+    def update_rl_model(self, boit):
+        print("updating best model...")
+        best_model, best_reward = find_best_model(self.save_dir, boit)
+        print("using model: {}, which has reward {}".format(best_model, best_reward))
+        self.rl_method = Aurora(seed=self.seed, log_dir=self.save_dir,
+                                pretrained_model_path=best_model,
+                                timesteps_per_actorbatch=7200, delta_scale=1)
 
-    def train(self, rounds: int):
-        """Genet trains rl_method.
-        Args
-            rounds: rounds of BO.
-
-        """
-        for i in range(rounds):
-            optimizer = BayesianOptimization(
-                f=lambda bandwidth, delay, queue, loss, T_s,
-                delay_noise: self.black_box_function(
-                    bandwidth, delay, queue, loss, T_s, delay_noise,
-                    heuristic=self.heuristic, rl_method=self.rl_method),
-                pbounds=self.pbounds, random_state=self.seed+i)
-            os.makedirs(os.path.join(self.save_dir, "bo_{}".format(i)),
-                        exist_ok=True)
-            logger = JSONLogger(path=os.path.join(
-                self.save_dir, "bo_{}_logs.json".format(i)))
-            optimizer.subscribe(Events.OPTIMIZATION_STEP, logger)
-            optimizer.maximize(init_points=13, n_iter=2, kappa=20, xi=0.1)
-            best_param = optimizer.max
+    def train(self, heu = 'cubic'):
+        """Genet trains rl_method."""
+        from time import time
+        for i in range(120):
+            # self.seed += 1
+            print("start finding param")
+            t1 = time()
+            best_param = self.find_best_param()
+            t2 = time()
+            print("end finding parameter, time elpased: {}".format(t2-t1))
             print(best_param)
             self.rand_ranges.add_ranges([best_param['params']])
             self.cur_config_file = os.path.join(
                 self.save_dir, "bo_"+str(i) + ".json")
             self.rand_ranges.dump(self.cur_config_file)
-            self.rl_method.log_dir = os.path.join(self.save_dir, "bo_{}".format(i))
-            self.rl_method.train(self.cur_config_file, 7.2e4, 100)
+            self.rl_method.train(i, self.cur_config_file, 3.6e4, 500)
+            # self.rl_method.train(i, self.cur_config_file, 3.6e5, 500)
+            # self.rl_method.train(i, self.cur_config_file, 10000, 500)
+            # self.rl_method.train(self.cur_config_file, 800, 500)
+            t3 = time()
+            # self.update_rl_model(i)
+            print("finish a training, time elapsed = {}".format(t3 - t2))
+            print("Start Ploting...")
+            # best_model, best_reward = find_best_model(self.save_dir, i)
+            name = self.save_dir.split('/')[-1] + "_bo_{}".format(i+1)
+            model_path = osp.join(self.save_dir, "bo_{}_model_step_{}.ckpt".format(i, 36000))
+            # model_path = best_model
+            compare(model_path, name)
+            print("End Ploting...")
+            
 
+    def find_best_param(self):
+        optimizer = BayesianOptimization(
+            f=lambda bandwidth, delay, queue, loss, T_s: black_box_function(
+                bandwidth, delay, queue, loss, T_s,
+                heuristic=self.heuristic, rl_method=self.rl_method),
+            pbounds=self.pbounds, random_state=self.seed)
+        optimizer.maximize(init_points=13, n_iter=2, kappa=20, xi=0.1)
+        best_param = optimizer.max
+        return best_param
+
+SAVEDIR=""
 
 def black_box_function(bandwidth: float, delay: float, queue: Union[int, float],
                        loss: float, T_s: float, delay_noise: float,
                        heuristic, rl_method) -> float:
     queue = int(queue)
     t_start = time.time()
-    trace = generate_trace(duration_range=(30, 30),
-                           bandwidth_range=(0.6, bandwidth),
+    trace = generate_trace(duration_range=(10, 10),
+                           bandwidth_range=(1, bandwidth),
                            delay_range=(delay, delay),
                            loss_rate_range=(loss, loss),
                            queue_size_range=(queue, queue),
                            T_s_range=(T_s, T_s),
                            delay_noise_range=(delay_noise, delay_noise),
                            constant_bw=False)
-    # print("trace generation used {}s".format(time.time() - t_start))
-    # t_start = time.time()
-    # heuristic_reward, _ = heuristic.test(trace)
-    heuristic_mi_level_reward, heuristic_pkt_level_reward = heuristic.test(
-        trace, rl_method.log_dir)
-    # print("heuristic used {}s".format(time.time() - t_start))
+    trace.dump(osp.join(SAVEDIR, "trace.json"))
+    print("trace generation used {}s".format(time.time() - t_start))
     t_start = time.time()
     _, reward_list, _, _, _, _, _, _, _, rl_pkt_log = rl_method.test(
         trace, rl_method.log_dir)
@@ -198,22 +242,30 @@ def black_box_function(bandwidth: float, delay: float, queue: Union[int, float],
 
 
 def main():
+    # print(find_best_model('/data/gengchen/PCC-RL/data/udr-large-genet-081700', 0))
     args = parse_args()
     set_seed(args.seed)
+    Path(args.save_dir).mkdir(exist_ok=True, parents=True)
+    SAVEDIR = args.save_dir
 
-    # cubic = Cubic(args.save_dir, args.seed)
-    if args.heuristic == 'bbr':
-        heuristic = BBR(True)
-    elif args.heuristic == 'cubic':
-        heuristic = Cubic(True)
-    else:
-        raise ValueError
+    cubic = Cubic(args.save_dir, args.seed)
+    bbr = BBR(args.save_dir)
+    # pre_model, _ = find_best_model(args.model_path)
+    pre_model = args.model_path
+    print(pre_model)
     aurora = Aurora(seed=args.seed, log_dir=args.save_dir,
-                    pretrained_model_path=args.model_path,
+                    pretrained_model_path=pre_model,
                     timesteps_per_actorbatch=7200, delta_scale=1)
-    genet = Genet(args.config_file, args.save_dir, black_box_function,
-                  heuristic, aurora)
-    genet.train(args.bo_rounds)
+    name = args.save_dir.split('/')[-1] + "_BeforeBO"
+    if not args.bbr:
+        compare(pre_model, name)
+        genet = Genet(args.config_file, args.save_dir, black_box_function, cubic, aurora)
+        genet.train()
+    else:
+        compare(pre_model, name)
+        print("using bbr")
+        genet = Genet(args.config_file, args.save_dir, black_box_function, bbr, aurora)
+        genet.train("bbr")
 
 
 if __name__ == "__main__":
