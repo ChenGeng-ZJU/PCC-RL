@@ -113,3 +113,8 @@ src/simulator/useless
 src/simulator_bkp
 src/simulator/tests
 .DS_Store
+archived
+data*
+log*
+tmp*
+figs*
