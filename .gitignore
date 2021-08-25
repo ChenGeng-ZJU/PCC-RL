@@ -106,11 +106,12 @@ venv.bak/
 .vim
 results_*
 results
-data*
-figs*
+*data*
+*figs*
 src/simulator/aurora_tensorboard
 src/simulator/useless
 src/simulator_bkp
 src/simulator/tests
 .DS_Store
-tmp*
+*tmp*
+*log*

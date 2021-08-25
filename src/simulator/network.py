@@ -589,11 +589,13 @@ class SimulatedNetworkEnv(gym.Env):
         if not self.senders[0].rtt_samples:
             # self.run_dur = 0.473
             # self.run_dur = 5 / self.senders[0].rate
-            self.run_dur = 0.01
+            # self.run_dur = 0.01
+            self.run_dur = 0.2
             # self.run_dur = self.current_trace.get_delay(0) * 2 / 1000
             # self.run_dur = self.replay.get_ts() -  0
 
     def reset(self):
+        # __import__("ipdb").set_trace()
         self.steps_taken = 0
         self.net.reset()
         self.current_trace = np.random.choice(self.traces)

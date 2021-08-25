@@ -229,7 +229,7 @@ def generate_trace(duration_range: Tuple[float, float],
         loss_rate_range: Uplink loss rate range.
         queue_size_range: queue size range in packets.
     """
-    set_seed(28)
+    set_seed(seed)
     assert len(duration_range) == 2 and \
             duration_range[0] <= duration_range[1] and duration_range[0] > 0
     assert len(bandwidth_range) == 2 and \

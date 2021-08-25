@@ -97,9 +97,10 @@ class RandomizationRanges:
 #         """Does whatever you want with the event and `BayesianOptimization` instance."""
 #         print("Event `{}` was observed".format(event))
 
-def find_best_model(model_path, boit=0):
+def find_best_model(model_path, boit=0, omit_start=False):
     best_step = -1
     best_reward = -1
+    flag = False
     with open(osp.join(model_path, "validation_log_{}.csv".format(boit)), 'r') as f:
         reader = csv.reader(f)
         for row in reader:
@@ -107,6 +108,10 @@ def find_best_model(model_path, boit=0):
             step, _, reward, _, _, _, _, _ = row[0].split('\t')
             if step=="n_calls":
                 continue
+            if omit_start:
+                if not flag:
+                    flag = True
+                    continue
             reward = float(reward)
             step = int(float(step))
             # print(step)
@@ -152,7 +157,7 @@ class Genet:
         print("using model: {}, which has reward {}".format(best_model, best_reward))
         self.rl_method = Aurora(seed=self.seed, log_dir=self.save_dir,
                                 pretrained_model_path=best_model,
-                                timesteps_per_actorbatch=1800, delta_scale=1)
+                                timesteps_per_actorbatch=7200, delta_scale=1)
 
     def train(self, heu = 'cubic'):
         """Genet trains rl_method."""
@@ -170,16 +175,17 @@ class Genet:
                 self.save_dir, "bo_"+str(i) + ".json")
             self.rand_ranges.dump(self.cur_config_file)
             self.rl_method.train(i, self.cur_config_file, 3.6e4, 500)
+            # self.rl_method.train(i, self.cur_config_file, 3.6e5, 500)
             # self.rl_method.train(i, self.cur_config_file, 10000, 500)
             # self.rl_method.train(self.cur_config_file, 800, 500)
             t3 = time()
-            self.update_rl_model(i)
+            # self.update_rl_model(i)
             print("finish a training, time elapsed = {}".format(t3 - t2))
             print("Start Ploting...")
-            best_model, best_reward = find_best_model(self.save_dir, i)
+            # best_model, best_reward = find_best_model(self.save_dir, i)
             name = self.save_dir.split('/')[-1] + "_bo_{}".format(i+1)
-            # model_path = osp.join(self.save_dir, "bo_{}_model_step_{}.ckpt".format(i, 36000))
-            model_path = best_model
+            model_path = osp.join(self.save_dir, "bo_{}_model_step_{}.ckpt".format(i, 36000))
+            # model_path = best_model
             compare(model_path, name)
             print("End Ploting...")
             
@@ -246,7 +252,7 @@ def main():
     print(pre_model)
     aurora = Aurora(seed=args.seed, log_dir=args.save_dir,
                     pretrained_model_path=pre_model,
-                    timesteps_per_actorbatch=1800, delta_scale=1)
+                    timesteps_per_actorbatch=7200, delta_scale=1)
     name = args.save_dir.split('/')[-1] + "_BeforeBO"
     if not args.bbr:
         compare(pre_model, name)

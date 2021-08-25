@@ -402,6 +402,7 @@ class Aurora():
                 reward = pcc_aurora_reward(
                     throughput / 8 / BYTES_PER_PACKET, latency, loss,
                     np.mean(trace.bandwidths) * 1e6 / 8 / BYTES_PER_PACKET)
+                # print(env.net.get_cur_time())
 
                 writer.writerow([
                     env.net.get_cur_time(), round(env.senders[0].rate * BYTES_PER_PACKET * 8, 0),

@@ -18,6 +18,7 @@ from simulator.evaluate_bbr import test_on_traces as test_bbr_on_traces
 from simulator.trace import generate_trace, Trace
 from tqdm import tqdm
 from pathlib import Path
+from plot_scripts.plot_time_series import plot_time
 
 def compare_metric(model_path, name, save_dir, vals2test, key):
     Path(save_dir).mkdir(parents=True, exist_ok=True)
@@ -31,16 +32,18 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
     bbr1_rewards = []
     bbr1_errors = []
     duration_range=(10, 10)
-    bw_range=(1, 1)
+    bw_range=(1, 5)
+    # TODO
     delay_range=(100, 100)
     lr_range=(0, 0)
     queue_size_range=(10, 10)
-    T_s_range=(0, 0)
+    T_s_range=(3, 3)
     delay_noise_range=(0, 0)
     for bwi, bw in enumerate(tqdm(vals2test[key], desc=key)):
+        # __import__("ipdb").set_trace()
         val = bw
         if key == 'bandwidth':
-            bw_range = (val, val)
+            bw_range = (1, val)
         elif key == 'delay':
             delay_range = (val, val)
         elif key == 'loss':
@@ -53,6 +56,7 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
             delay_noise_range = (val, val)
         else:
             raise NotImplementedError
+        trace_cnt = 10
         syn_traces = [generate_trace(duration_range=duration_range,
                                 bandwidth_range=bw_range,
                                 delay_range=delay_range,
@@ -60,19 +64,31 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
                                 queue_size_range=queue_size_range,
                                 T_s_range=T_s_range,
                                 delay_noise_range=delay_noise_range,
-                                constant_bw=False) for _ in range(5)]
-        tmpsvp = osp.join('tmp', '{}_{}_{}'.format(name, key, bwi))
-        Path(tmpsvp).mkdir(exist_ok=True, parents=True)
-        syn_traces[-1].dump(osp.join(tmpsvp, "trace.json"))
+                                constant_bw=False,
+                                seed=x*123) for x in range(trace_cnt)]
+        # tmpsvp = osp.join('tmp', '{}_{}_{}'.format(name, key, bwi))
+        tmpsvps = [osp.join('log', name, key, str(bw), str(tracei)) for tracei in range(trace_cnt)]
+        for i in range(trace_cnt):
+            Path(tmpsvps[i]).mkdir(exist_ok=True, parents=True)
+            syn_traces[i].dump(osp.join(tmpsvps[i], "trace.json"))
+        # Path(tmpsvp).mkdir(exist_ok=True, parents=True)
 
-        aurora_udr_big = Aurora(seed=20, log_dir=tmpsvp, timesteps_per_actorbatch=10,
+        aurora_udr_big = Aurora(seed=20, log_dir=tmpsvps[0], timesteps_per_actorbatch=10,
                                 pretrained_model_path=model_path, delta_scale=1)
 
-        cubic_rewards, _ = test_cubic_on_traces(syn_traces, [tmpsvp]*len(syn_traces), seed=20)
-        bbr_rewards, _ = test_bbr_on_traces(syn_traces, [tmpsvp]*len(syn_traces), seed=20)
+        cubic_rewards, _ = test_cubic_on_traces(syn_traces, tmpsvps, seed=20)
+        bbr_rewards, _ = test_bbr_on_traces(syn_traces, tmpsvps, seed=20)
+        results, _ = aurora_udr_big.test_on_traces(syn_traces, tmpsvps)
 
-        results, _ = aurora_udr_big.test_on_traces(
-                syn_traces, [tmpsvp]*len(syn_traces))
+        # plot scripts
+        for i in range(trace_cnt):
+            di = tmpsvps[i]
+            # __import__("ipdb").set_trace()
+            for method in ['aurora', 'cubic', 'bbr']:
+                plot_time([osp.join(di, '{}_simulation_log.csv'.format(method))], 
+                           osp.join(di, "trace.json"),
+                           di)
+
         # print(np.mean(np.array(cubic_rewards), axis=0))
         avg_cubic_rewards = np.mean([np.mean(r) for r in cubic_rewards])
         avg_cubic_rewards_errs = compute_std_of_mean([np.mean(r) for r in cubic_rewards])
@@ -113,25 +129,25 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
     return np.array(aurora_rewards).mean()
 
 def compare(model_path, name):
-    plt.style.use('seaborn-deep')
+    # plt.style.use('seaborn-deep')
     # plt.rcParams['font.family'] = 'Times New Roman'
-    plt.rcParams['font.size'] = 28
-    plt.rcParams['axes.labelsize'] = 38
-    plt.rcParams['legend.fontsize'] = 24
-    plt.rcParams["figure.figsize"] = (11,6)
+    # plt.rcParams['font.size'] = 28
+    # plt.rcParams['axes.labelsize'] = 38
+    # plt.rcParams['legend.fontsize'] = 24
+    # plt.rcParams["figure.figsize"] = (11,6)
 
     rpath = "/data/gengchen/PCC-RL"
     MODEL_PATH = model_path
     SAVE_DIR = osp.join(rpath, 'figs')
     print(MODEL_PATH)
 
-    set_seed(28)
+    set_seed(42)
 
     vals2test = {
-        "bandwidth": [1, 2, 3, 4, 5, 6],
+        "bandwidth": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
         "delay": [5, 50, 100, 150, 200],
         "loss": [0, 0.01, 0.02, 0.03, 0.04, 0.05],
-        "queue": [2, 10, 50, 100, 150, 200],
+        "queue": [10, 50, 100, 150, 200],
         "T_s": [0, 1, 2, 3, 4, 5, 6],
         "delay_noise": [0, 20, 40, 60, 80, 100],
     }
@@ -145,7 +161,12 @@ def compare(model_path, name):
 
 if __name__ == "__main__":
     rpath = "/data/gengchen/PCC-RL"
-    name = "udr-large-genet-082010"
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument("--start", type=int, required=True)
+    parser.add_argument("--intv", type=int, required=True)
+    args = parser.parse_args()
+    # name = "udr-large-genet-082010"
     # compare(osp.join(rpath, "data", "udr-large-genet-082001", "bo_10_model_step_72000.ckpt"), "test-082001-10-72000")
     # reward = []
     # for i in range(7200, 302400, 7200):
@@ -158,10 +179,15 @@ if __name__ == "__main__":
     # for i in range(1, 20):
     #     # model, reward = ge.find_best_model(osp.join(rpath, 'data/udr-large-genet-081801'), i)
     #     # print(model)
-    #     name = 'udr-large-genet-test-bo{}'.format(i) 
+    #     name = 'udr-large-genet-test-bo{}'.format(i)
     #     # compare(model, name)
-    for i in range(80):
+    # for i in range(80):
+    #     compare(
+    #         osp.join(rpath, "data", name, "bo_{}_model_step_36000.ckpt".format(i)),
+    #         name+"_fix_bo_{}".format(i)
+    #     )
+    for i in range(args.start, 120, args.intv):
         compare(
-            osp.join(rpath, "data", name, "bo_{}_model_step_36000.ckpt".format(i)),
-            name+"_fix_bo_{}".format(i)
+            osp.join(rpath, "data", "udr-large-genet-082010", "bo_{}_model_step_36000.ckpt".format(i)),
+            "new_cubic_genet_bo_{}".format(i)
         )
