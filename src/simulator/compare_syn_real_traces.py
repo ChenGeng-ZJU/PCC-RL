@@ -31,7 +31,7 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
     cubic1_errors = []
     bbr1_rewards = []
     bbr1_errors = []
-    duration_range=(10, 10)
+    duration_range=(30, 30)
     bw_range=(1, 5)
     # TODO
     delay_range=(100, 100)
@@ -161,6 +161,8 @@ def compare(model_path, name):
 
 if __name__ == "__main__":
     rpath = "/data/gengchen/PCC-RL"
+    compare(osp.join(rpath, 'data', 'udr-lossless-0825', 'model_step_820800.ckpt'), 'udr-lossless-0825-820800')
+    exit(0)
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument("--start", type=int, required=True)

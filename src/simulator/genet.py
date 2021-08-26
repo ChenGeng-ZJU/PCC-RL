@@ -216,11 +216,12 @@ class Genet:
 SAVEDIR=""
 
 def black_box_function(bandwidth: float, delay: float, queue: Union[int, float],
-                       loss: float, T_s: float, delay_noise: float,
+                       loss: float, T_s: float,
                        heuristic, rl_method) -> float:
     queue = int(queue)
     t_start = time.time()
-    trace = generate_trace(duration_range=(10, 10),
+    delay_noise = 0
+    trace = generate_trace(duration_range=(30, 30),
                            bandwidth_range=(1, bandwidth),
                            delay_range=(delay, delay),
                            loss_rate_range=(loss, loss),
@@ -229,6 +230,8 @@ def black_box_function(bandwidth: float, delay: float, queue: Union[int, float],
                            delay_noise_range=(delay_noise, delay_noise),
                            constant_bw=False)
     trace.dump(osp.join(SAVEDIR, "trace.json"))
+    heuristic_mi_level_reward, heuristic_pkt_level_reward = heuristic.test(
+        trace, rl_method.log_dir)
     print("trace generation used {}s".format(time.time() - t_start))
     t_start = time.time()
     _, reward_list, _, _, _, _, _, _, _, rl_pkt_log = rl_method.test(
@@ -248,7 +251,7 @@ def main():
     Path(args.save_dir).mkdir(exist_ok=True, parents=True)
     SAVEDIR = args.save_dir
 
-    cubic = Cubic(args.save_dir, args.seed)
+    cubic = Cubic(args.seed)
     bbr = BBR(args.save_dir)
     # pre_model, _ = find_best_model(args.model_path)
     pre_model = args.model_path

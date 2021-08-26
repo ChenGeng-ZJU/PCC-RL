@@ -60,9 +60,10 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
     :param verbose: (int)
     """
 
-    def __init__(self, aurora, check_freq: int, log_dir: str, val_traces: List = [],
-                 verbose=0, steps_trained=0, config_file=None, tot_trace_cnt=100):
+    def __init__(self, itx, aurora, check_freq: int, log_dir: str, val_traces: List = [],
+                 verbose=0, steps_trained=0, config_file=None, tot_trace_cnt=100, total_timesteps=1):
         super(SaveOnBestTrainingRewardCallback, self).__init__(verbose)
+        self.itx = itx
         self.progress_bar = tqdm(total=total_timesteps)
         self.aurora = aurora
         self.check_freq = check_freq
@@ -246,7 +247,7 @@ class Aurora():
         assert isinstance(self.model, PPO1)
 
         training_traces = generate_traces(config_file, tot_trace_cnt,
-                                          duration=10, constant_bw=False)
+                                          duration=30, constant_bw=False)
         for i, train_trace in enumerate(training_traces):
             from pathlib import Path
             Path(os.path.join(self.log_dir, "train_trace")).mkdir(exist_ok=True, parents=True)
@@ -264,7 +265,7 @@ class Aurora():
         callback = SaveOnBestTrainingRewardCallback(itx,
             self, check_freq=self.timesteps_per_actorbatch, log_dir=self.log_dir,
             steps_trained=self.steps_trained, val_traces=validation_traces,
-            config_file=config_file, tot_trace_cnt=tot_trace_cnt)
+            config_file=config_file, tot_trace_cnt=tot_trace_cnt, total_timesteps=total_timesteps)
         self.model.learn(total_timesteps=total_timesteps,
                          tb_log_name=tb_log_name, callback=callback)
 

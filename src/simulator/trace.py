@@ -219,7 +219,7 @@ def generate_trace(duration_range: Tuple[float, float],
                    queue_size_range: Tuple[int, int],
                    T_s_range: Union[Tuple[float, float], None] = None,
                    delay_noise_range: Union[Tuple[float, float], None] = None,
-                   constant_bw: bool = True, seed: int = 42):
+                   constant_bw: bool = True, seed: int = -1):
     """Generate trace for a network flow.
 
     Args:
@@ -229,7 +229,8 @@ def generate_trace(duration_range: Tuple[float, float],
         loss_rate_range: Uplink loss rate range.
         queue_size_range: queue size range in packets.
     """
-    set_seed(seed)
+    if seed != -1:
+        set_seed(seed)
     assert len(duration_range) == 2 and \
             duration_range[0] <= duration_range[1] and duration_range[0] > 0
     assert len(bandwidth_range) == 2 and \
@@ -293,13 +294,15 @@ def generate_trace(duration_range: Tuple[float, float],
 
 
 def generate_traces(config_file: str, tot_trace_cnt: int, duration: int,
-                    constant_bw: bool = True):
+                    constant_bw: bool = True, seed: int = -1):
     config = read_json_file(config_file)
     traces = []
     weight_sum = 0
     for env_config in config:
         weight_sum += env_config['weight']
     assert round(weight_sum, 1) == 1.0
+
+    rseed = seed if seed != -1 else -1
 
     for env_config in config:
         bw_min, bw_max = env_config['bandwidth']
@@ -325,9 +328,11 @@ def generate_traces(config_file: str, tot_trace_cnt: int, duration: int,
                                    (queue_min, queue_max),
                                    (T_s_min, T_s_max),
                                    (delay_noise_min, delay_noise_max),
-                                   constant_bw=constant_bw)
+                                   constant_bw=constant_bw,
+                                   seed=rseed)
                                    # (d_bw_min, d_bw_max),
                                    # (d_delay_min, d_delay_max),
+            rseed += 1 if seed != -1 else 0
             traces.append(trace)
     return traces
 
