@@ -32,7 +32,7 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
     bbr1_rewards = []
     bbr1_errors = []
     duration_range=(30, 30)
-    bw_range=(1, 5)
+    bw_range=(0.6, 5)
     # TODO
     delay_range=(100, 100)
     lr_range=(0, 0)
@@ -43,7 +43,7 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
         # __import__("ipdb").set_trace()
         val = bw
         if key == 'bandwidth':
-            bw_range = (1, val)
+            bw_range = (0.6, val)
         elif key == 'delay':
             delay_range = (val, val)
         elif key == 'loss':
