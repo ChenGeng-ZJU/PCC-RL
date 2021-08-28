@@ -324,7 +324,6 @@ class BBRSender(Sender):
         self.cwnd = self.bytes_in_flight / BYTES_PER_PACKET + max(packets_delivered, 1)
         self.packet_conservation = True
         self.in_fast_recovery_mode = True
-        assert self.srtt is not None
         if self.srtt is None:
             self.exit_fast_recovery_ts = self.get_cur_time() + pkt.rtt
         else:

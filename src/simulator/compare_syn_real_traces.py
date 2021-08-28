@@ -81,7 +81,7 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
         results, _ = aurora_udr_big.test_on_traces(syn_traces, tmpsvps)
 
         # plot scripts
-        for i in range(trace_cnt):
+        for i in range(0, trace_cnt, 5):
             di = tmpsvps[i]
             # __import__("ipdb").set_trace()
             for method in ['aurora', 'cubic', 'bbr']:

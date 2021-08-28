@@ -211,6 +211,7 @@ class Genet:
             pbounds=self.pbounds, random_state=self.seed)
         optimizer.maximize(init_points=13, n_iter=2, kappa=20, xi=0.1)
         best_param = optimizer.max
+        # self.seed = ((self.seed * 123 + 321) * 123) % 19260817
         return best_param
 
 SAVEDIR=""
@@ -222,7 +223,7 @@ def black_box_function(bandwidth: float, delay: float, queue: Union[int, float],
     t_start = time.time()
     delay_noise = 0
     trace = generate_trace(duration_range=(30, 30),
-                           bandwidth_range=(0.6, bandwidth),
+                           bandwidth_range=(0.1, bandwidth),
                            delay_range=(delay, delay),
                            loss_rate_range=(loss, loss),
                            queue_size_range=(queue, queue),
@@ -260,7 +261,7 @@ def main():
                     pretrained_model_path=pre_model,
                     timesteps_per_actorbatch=7200, delta_scale=1)
     name = args.save_dir.split('/')[-1] + "_BeforeBO"
-    compare(pre_model, name)
+    # compare(pre_model, name)
     if not args.bbr:
         genet = Genet(args.config_file, args.save_dir, black_box_function, cubic, aurora)
         genet.train()

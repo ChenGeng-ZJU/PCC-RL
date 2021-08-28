@@ -598,7 +598,9 @@ def generate_bw_delay_series(T_s: float, duration: float, min_tp: float, max_tp:
 
     while ts < duration:
         if T_s !=0 and ts - bw_change_ts >= T_s:
-            bw_val = float(np.random.uniform(min_tp, max_tp, 1))
+            # bw_val = float(np.random.uniform(min_tp, max_tp, 1))
+            bw_val = round(np.exp(float(np.random.uniform(
+                np.log(min_tp), np.log(max_tp), 1))), round_digit)
             bw_change_ts = ts
 
         ts = round(ts, round_digit)
