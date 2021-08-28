@@ -28,7 +28,7 @@ from simulator import network
 from simulator.constants import BYTES_PER_PACKET
 from simulator.trace import generate_trace, Trace, generate_traces
 from common.utils import set_tf_loglevel, pcc_aurora_reward
-from plot_scripts.plot_packet_log import PacketLog
+from plot_scripts.plot_packet_log import PacketLog, plot
 from udt_plugins.testing.loaded_agent import LoadedModel
 
 
@@ -80,13 +80,15 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
                 delimiter='\t', lineterminator='\n')
             self.val_log_writer.writerow(
                 ['n_calls', 'num_timesteps', 'mean_validation_reward', 'loss',
-                 'throughput', 'latency', 'sending_rate', 'tot_t_used(min)'])
+                 'throughput', 'latency', 'sending_rate', 'tot_t_used(min)',
+                 'val_t_used(min)', 'train_t_used(min)'])
         else:
             self.val_log_writer = None
         self.best_val_reward = -np.inf
         self.val_times = 0
 
         self.t_start = time.time()
+        self.prev_t = time.time()
         self.steps_trained = steps_trained
 
     def _init_callback(self) -> None:
@@ -121,15 +123,20 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
                 with self.model.graph.as_default():
                     saver = tf.train.Saver()
                     saver.save(
-                        self.model.sess, os.path.join(
-                            self.save_path, "bo_{}_model_step_{}.ckpt".format(self.itx, self.n_calls)))
+                        self.model.sess, os.path.join(self.save_path, "bo_{}_model_step_{}.ckpt".format(self.itx, self.n_calls)))
+                avg_tr_bw = []
+                avg_tr_min_rtt = []
+                avg_tr_loss = []
                 avg_rewards = []
                 avg_losses = []
                 avg_tputs = []
                 avg_delays = []
                 avg_send_rates = []
+                val_start_t = time.time()
                 for idx, val_trace in tqdm(enumerate(self.val_traces), total=len(self.val_traces)):
                     # print(np.mean(val_trace.bandwidths))
+                    avg_tr_bw.append(val_trace.avg_bw)
+                    avg_tr_min_rtt.append(val_trace.avg_bw)
                     ts_list, val_rewards, loss_list, tput_list, delay_list, \
                         send_rate_list, action_list, obs_list, mi_list, pkt_log = self.aurora.test(
                             val_trace, self.log_dir)
@@ -145,6 +152,7 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
                     # avg_tputs.append(np.mean(pktlog.get_throughput()[1]))
                     # avg_delays.append(np.mean(pktlog.get_rtt()[1]))
                     # avg_send_rates.append(np.mean(pktlog.get_sending_rate()[1]))
+                cur_t = time.time()
                 self.val_log_writer.writerow(
                     map(lambda t: "%.3f" % t,
                         [float(self.n_calls), float(self.num_timesteps),
@@ -153,7 +161,9 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
                          np.mean(np.array(avg_tputs)),
                          np.mean(np.array(avg_delays)),
                          np.mean(np.array(avg_send_rates)),
-                         (time.time() - self.t_start) / 60]))
+                         (cur_t - self.t_start) / 60,
+                         (cur_t - val_start_t) / 60, (val_start_t - self.prev_t) / 60]))
+                self.prev_t = cur_t
         return True
 
 
@@ -190,6 +200,7 @@ def save_model_to_serve(model, export_dir):
 
 
 class Aurora():
+    cc_name = 'aurora'
     def __init__(self, seed: int, log_dir: str, timesteps_per_actorbatch: int,
                  pretrained_model_path=None, gamma: float = 0.99,
                  tensorboard_log=None, delta_scale=1):
@@ -201,7 +212,7 @@ class Aurora():
         self.pretrained_model_path = pretrained_model_path
         self.steps_trained = 0
         dummy_trace = generate_trace(
-            (10, 10), (2, 2), (50, 50), (0, 0), (100, 100))
+            (10, 10), (2, 2), (2, 2), (50, 50), (0, 0), (1, 1), (0, 0), (0, 0))
         env = gym.make('PccNs-v0', traces=[dummy_trace],
                        train_flag=True, delta_scale=self.delta_scale)
         # Load pretrained model
@@ -334,7 +345,7 @@ class Aurora():
     def load_model(self):
         raise NotImplementedError
 
-    def test(self, trace: Trace, save_dir: str):
+    def test(self, trace: Trace, save_dir: str, plot_flag=False):
         reward_list = []
         loss_list = []
         tput_list = []
@@ -358,7 +369,7 @@ class Aurora():
                              'latency_ratio', 'send_ratio',
                              'bandwidth', "queue_delay",
                              'packet_in_queue', 'queue_size', 'cwnd',
-                             'ssthresh', "rto", "recv_ratio"])
+                             'ssthresh', "rto", "recv_ratio", "srtt"])
             env = gym.make(
                 'PccNs-v0', traces=[trace], delta_scale=self.delta_scale)
             env.seed(self.seed)
@@ -419,7 +430,7 @@ class Aurora():
                     env.links[0].get_bandwidth(
                         env.net.get_cur_time()) * BYTES_PER_PACKET * 8,
                     avg_queue_delay, env.links[0].pkt_in_queue, env.links[0].queue_size,
-                    env.senders[0].cwnd, env.senders[0].ssthresh, env.senders[0].rto, recv_ratio])
+                    env.senders[0].cwnd, env.senders[0].ssthresh, env.senders[0].rto, recv_ratio, env.senders[0].estRTT])
                 reward_list.append(reward)
                 loss_list.append(loss)
                 delay_list.append(latency * 1000)
@@ -441,4 +452,7 @@ class Aurora():
                                  'bytes', 'cur_latency', 'queue_delay',
                                  'packet_in_queue', 'sending_rate', 'bandwidth'])
             pkt_logger.writerows(env.net.pkt_log)
+        if plot_flag:
+            pkt_log = PacketLog.from_log(env.net.pkt_log)
+            plot(trace, pkt_log, save_dir, "aurora")
         return ts_list, reward_list, loss_list, tput_list, delay_list, send_rate_list, action_list, obs_list, mi_list, env.net.pkt_log

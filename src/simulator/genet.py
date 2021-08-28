@@ -216,14 +216,16 @@ class Genet:
 
 SAVEDIR=""
 
-def black_box_function(bandwidth: float, delay: float, queue: Union[int, float],
-                       loss: float, T_s: float,
+def black_box_function(bandwidth_lower_bound: float,
+                       bandwidth_upper_bound: float, delay: float, queue: float,
+                       loss: float, T_s: float, delay_noise: float,
                        heuristic, rl_method) -> float:
-    queue = int(queue)
+    # queue = int(queue)
     t_start = time.time()
     delay_noise = 0
     trace = generate_trace(duration_range=(30, 30),
-                           bandwidth_range=(0.1, bandwidth),
+                           bandwidth_lower_bound_range=(bandwidth_lower_bound, bandwidth_lower_bound),
+                           bandwidth_upper_bound_range=(bandwidth_upper_bound, bandwidth_upper_bound),
                            delay_range=(delay, delay),
                            loss_rate_range=(loss, loss),
                            queue_size_range=(queue, queue),

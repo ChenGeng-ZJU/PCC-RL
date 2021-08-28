@@ -264,6 +264,7 @@ class Network():
             np.mean(self.env.current_trace.bandwidths) * 1e6 / 8 / BYTES_PER_PACKET,
             np.mean(self.env.current_trace.delays) * 2 / 1e3)
 
+        # self.env.run_dur = MI_RTT_PROPORTION * self.senders[0].estRTT # + np.mean(extra_delays)
         if latency > 0.0:
             self.env.run_dur = MI_RTT_PROPORTION * \
                 sender_mi.get("avg latency") + np.mean(extra_delays)
@@ -326,8 +327,10 @@ class Sender():
         self.rto = -1
         self.ssthresh = 0
         self.pkt_loss_wait_time = -1
-        self.estRTT = 1000000 / 1e6  # SynInterval in emulation
-        self.RTTVar = self.estRTT / 2  # RTT variance
+        # self.estRTT = 1000000 / 1e6  # SynInterval in emulation
+        # self.RTTVar = self.estRTT / 2  # RTT variance
+        self.estRTT = None  # SynInterval in emulation
+        self.RTTVar = None  # RTT variance
         self.got_data = False
 
         self.min_rtt = 10
@@ -378,8 +381,14 @@ class Sender():
 
     def on_packet_acked(self, rtt):
         self.min_rtt = min(self.min_rtt, rtt)
-        self.estRTT = (7.0 * self.estRTT + rtt) / 8.0  # RTT of emulation way
-        self.RTTVar = (self.RTTVar * 7.0 + abs(rtt - self.estRTT) * 1.0) / 8.0
+        if self.estRTT is None and self.RTTVar is None:
+            self.estRTT = rtt
+            self.RTTVar = rtt / 2
+        elif self.estRTT and self.RTTVar:
+            self.estRTT = (7.0 * self.estRTT + rtt) / 8.0  # RTT of emulation way
+            self.RTTVar = (self.RTTVar * 7.0 + abs(rtt - self.estRTT) * 1.0) / 8.0
+        else:
+            raise ValueError("srtt and rttvar shouldn't be None.")
 
         self.acked += 1
         self.rtt_samples.append(rtt)
@@ -673,7 +682,7 @@ class SimulatedNetworkEnv(gym.Env):
         if self.train_flag and self.config_file is not None and self.episodes_run % 100 == 0:
             print('change traces', self.episodes_run)
             self.traces = generate_traces(self.config_file, 10,
-                                          duration=10, constant_bw=False)
+                                          duration=30, constant_bw=False)
         # self.replay.reset()
         self.net.run_for_dur(self.run_dur)
         self.reward_ewma *= 0.99

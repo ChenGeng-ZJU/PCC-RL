@@ -5,11 +5,10 @@ import random
 from enum import Enum
 from typing import Tuple
 
-import ipdb
 import numpy as np
 
-from common.utils import pcc_aurora_reward, set_seed
-from plot_scripts.plot_packet_log import PacketLog
+from common.utils import pcc_aurora_reward
+from plot_scripts.plot_packet_log import PacketLog, plot
 from simulator.network_simulator.constants import (BITS_PER_BYTE,
                                                    BYTES_PER_PACKET, TCP_INIT_CWND)
 from simulator.network_simulator.link import Link
@@ -157,9 +156,9 @@ class BBRSender(Sender):
         https://datatracker.ietf.org/doc/html/draft-cheng-iccrg-delivery-rate-estimation#section-3.1.3
     """
 
-    def __init__(self, sender_id: int, dest: int):
+    def __init__(self, sender_id: int, dest: int, seed: int):
         super().__init__(sender_id, dest)
-
+        self.prng = random.Random(seed)
         self.cwnd = TCP_INIT_CWND
 
         self.conn_state = ConnectionState()
@@ -350,7 +349,7 @@ class BBRSender(Sender):
         self.state = BBRMode.BBR_PROBE_BW
         self.pacing_gain = 1
         self.cwnd_gain = 2
-        self.cycle_index = BBR_GAIN_CYCLE_LEN - 1 - random.randint(0, 6)
+        self.cycle_index = BBR_GAIN_CYCLE_LEN - 1 - self.prng.randint(0, 6)
         self.advance_cycle_phase()
 
     def check_cycle_phase(self):
@@ -628,9 +627,9 @@ class BBR:
 
     def __init__(self, record_pkt_log: bool = False, seed: int = 42):
         self.record_pkt_log = record_pkt_log
-        set_seed(seed)
+        self.seed = seed
 
-    def test(self, trace: Trace, save_dir: str) -> Tuple[float, float]:
+    def test(self, trace: Trace, save_dir: str, plot_flag: bool = False) -> Tuple[float, float]:
         """Test a network trace and return rewards.
 
         The 1st return value is the reward in Monitor Interval(MI) level and
@@ -647,7 +646,7 @@ class BBR:
         """
 
         links = [Link(trace), Link(trace)]
-        senders = [BBRSender(0, 0)]
+        senders = [BBRSender(0, 0, self.seed)]
         net = Network(senders, links, self.record_pkt_log)
 
         rewards = []
@@ -714,4 +713,6 @@ class BBR:
                 pkt_logger.writerows(net.pkt_log)
             pkt_log = PacketLog.from_log(net.pkt_log)
             pkt_level_reward = pkt_log.get_reward("", trace)
+            if plot_flag:
+                plot(trace, pkt_log, save_dir, self.cc_name)
         return np.mean(rewards), pkt_level_reward
