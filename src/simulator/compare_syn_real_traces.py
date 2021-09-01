@@ -20,6 +20,46 @@ from tqdm import tqdm
 from pathlib import Path
 from plot_scripts.plot_time_series import plot_time
 
+def test_with_param(rang, name, model_path):
+    trace_cnt = 1
+    bw = rang['bandwidth_upper_bound'][0]
+    delay = rang['delay'][0]
+    loss = rang['loss'][0]
+    queue = rang['queue'][0]
+    ts = rang['T_s'][0]
+    syn_traces = [generate_trace(duration_range=(30, 30),
+                            bandwidth_lower_bound_range=(0.1, 0.1),
+                            bandwidth_upper_bound_range=(bw, bw),
+                            delay_range=(delay, delay),
+                            loss_rate_range=(loss, loss),
+                            queue_size_range=(queue, queue),
+                            T_s_range=(ts, ts),
+                            delay_noise_range=(0., 0.),
+                            constant_bw=False,
+                            seed=x*123+5) for x in range(trace_cnt)]
+    # tmpsvp = osp.join('tmp', '{}_{}_{}'.format(name, key, bwi))
+    tmpsvps = [osp.join('log', name, str(tracei)) for tracei in range(trace_cnt)]
+    for i in range(trace_cnt):
+        Path(tmpsvps[i]).mkdir(exist_ok=True, parents=True)
+        syn_traces[i].dump(osp.join(tmpsvps[i], "trace.json"))
+    # Path(tmpsvp).mkdir(exist_ok=True, parents=True)
+
+    aurora_udr_big = Aurora(seed=20, log_dir=tmpsvps[0], timesteps_per_actorbatch=10, pretrained_model_path=model_path, delta_scale=1)
+
+    cubic_rewards, _ = test_cubic_on_traces(syn_traces, tmpsvps, seed=20)
+    bbr_rewards, _ = test_bbr_on_traces(syn_traces, tmpsvps, seed=20)
+    results, _ = aurora_udr_big.test_on_traces(syn_traces, tmpsvps)
+
+    # plot scripts
+    for i in range(0, trace_cnt, 5):
+        di = tmpsvps[i]
+        # __import__("ipdb").set_trace()
+        for method in ['aurora', 'cubic', 'bbr']:
+            plot_time([osp.join(di, '{}_simulation_log.csv'.format(method))], 
+                        osp.join(di, "trace.json"),
+                        di)
+
+
 def compare_metric(model_path, name, save_dir, vals2test, key):
     Path(save_dir).mkdir(parents=True, exist_ok=True)
     f = open(os.path.join(save_dir, 'syn_vs_real_traces_{}.csv'.format(name)), 'w', 1)
@@ -32,18 +72,18 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
     bbr1_rewards = []
     bbr1_errors = []
     duration_range=(30, 30)
-    bw_range=(0.6, 5)
+    bw_range=(0.1, 100)
     # TODO
     delay_range=(100, 100)
     lr_range=(0, 0)
-    queue_size_range=(10, 10)
+    queue_size_range=(1.6, 1.6)
     T_s_range=(3, 3)
     delay_noise_range=(0, 0)
     for bwi, bw in enumerate(tqdm(vals2test[key], desc=key)):
         # __import__("ipdb").set_trace()
         val = bw
         if key == 'bandwidth':
-            bw_range = (0.6, val)
+            bw_range = (val, val)
         elif key == 'delay':
             delay_range = (val, val)
         elif key == 'loss':
@@ -56,9 +96,10 @@ def compare_metric(model_path, name, save_dir, vals2test, key):
             delay_noise_range = (val, val)
         else:
             raise NotImplementedError
-        trace_cnt = 10
+        trace_cnt = 1
         syn_traces = [generate_trace(duration_range=duration_range,
-                                bandwidth_range=bw_range,
+                                bandwidth_lower_bound_range=(0.1, 0.1),
+                                bandwidth_upper_bound_range=bw_range,
                                 delay_range=delay_range,
                                 loss_rate_range=lr_range,
                                 queue_size_range=queue_size_range,
@@ -144,12 +185,12 @@ def compare(model_path, name):
     set_seed(42)
 
     vals2test = {
-        "bandwidth": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        "bandwidth": [10, 20, 30, 40, 50, 60, 70, 90, 100],
         "delay": [5, 50, 100, 150, 200],
         "loss": [0, 0.01, 0.02, 0.03, 0.04, 0.05],
-        "queue": [10, 50, 100, 150, 200],
-        "T_s": [0, 1, 2, 3, 4, 5, 6],
-        "delay_noise": [0, 20, 40, 60, 80, 100],
+        "queue": [0.2, 0.5, 1.2, 1.8, 2.3, 3],
+        "T_s": [0, 3, 6, 9, 15],
+        # "delay_noise": [0, 20, 40, 60, 80, 100],
     }
 
     reward = []
@@ -158,10 +199,18 @@ def compare(model_path, name):
         reward.append(compare_metric(MODEL_PATH, name + "_" + key, osp.join(SAVE_DIR, basename, key), vals2test, key))
     return np.array(reward).mean()
 
+import json
 
 if __name__ == "__main__":
-    rpath = "/data/gengchen/PCC-RL"
-    compare(osp.join(rpath, 'data', 'udr-lossless-0825', 'model_step_820800.ckpt'), 'udr-lossless-0825-820800')
+    rpath = "/data/gengchen/PCC-RL/data/bbr-0829"
+    from tqdm import tqdm
+    for i in tqdm(range(1, 25)):
+        prev_model = osp.join(rpath, 'bo_{}_model_step_36000.ckpt'.format(i-1))
+        cur_model = osp.join(rpath, 'bo_{}_model_step_36000.ckpt'.format(i))
+        with open(osp.join(rpath, 'bo_{}.json'.format(i))) as f:
+            rang = json.load(f)[-1]
+        test_with_param(rang, 'bo_{}_prev_model_bbr_0829'.format(i), prev_model) 
+        test_with_param(rang, 'bo_{}_after_model_bbr_0829'.format(i), cur_model) 
     exit(0)
     from argparse import ArgumentParser
     parser = ArgumentParser()

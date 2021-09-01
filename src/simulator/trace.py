@@ -309,7 +309,7 @@ def generate_trace(duration_range: Tuple[float, float],
 
 
 def generate_traces(config_file: str, tot_trace_cnt: int, duration: int,
-                    constant_bw: bool = True, seed: int = -1):
+                    constant_bw: bool = True, seed: Union[int, None] = None):
     config = read_json_file(config_file)
     traces = []
     weight_sum = 0
@@ -317,7 +317,7 @@ def generate_traces(config_file: str, tot_trace_cnt: int, duration: int,
         weight_sum += env_config['weight']
     assert round(weight_sum, 1) == 1.0
 
-    rseed = seed if seed != -1 else -1
+    # rseed = seed if seed != -1 else -1
 
     for env_config in config:
         bw_lower_bnd_min, bw_lower_bnd_max = env_config['bandwidth_lower_bound']
@@ -346,10 +346,11 @@ def generate_traces(config_file: str, tot_trace_cnt: int, duration: int,
                                    (T_s_min, T_s_max),
                                    (delay_noise_min, delay_noise_max),
                                    constant_bw=constant_bw,
-                                   seed=rseed)
+                                   seed=seed)
                                    # (d_bw_min, d_bw_max),
                                    # (d_delay_min, d_delay_max),
-            rseed += 1 if seed != -1 else 0
+            if seed:
+                seed += 1
             traces.append(trace)
     return traces
 

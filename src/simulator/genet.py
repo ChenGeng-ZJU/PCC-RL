@@ -79,6 +79,9 @@ class RandomizationRanges:
                 if param == 'duration':
                     range_map_to_add[param] = [30, 30]
                     continue
+                if param == 'delay_noise':
+                    # range_map_to_add[param] == [0., 0.]
+                    continue
 
                 assert param in range_map, "range_map does not contain '{}'".format(
                     param)
@@ -89,6 +92,8 @@ class RandomizationRanges:
     def get_original_range(self) -> Dict[str, List[float]]:
         start_range = dict()
         for param_name in self.parameters:
+            if param_name in ['duration', 'delay_noise']:
+                continue
             start_range[param_name] = self.rand_ranges[0][param_name]
         return start_range
 
@@ -205,10 +210,11 @@ class Genet:
 
     def find_best_param(self):
         optimizer = BayesianOptimization(
-            f=lambda bandwidth, delay, queue, loss, T_s: black_box_function(
-                bandwidth, delay, queue, loss, T_s,
+            f=lambda bandwidth_lower_bound, bandwidth_upper_bound, delay, queue, loss, T_s: black_box_function(
+                bandwidth_lower_bound, bandwidth_upper_bound, delay, queue, loss, T_s, 0.0,
                 heuristic=self.heuristic, rl_method=self.rl_method),
             pbounds=self.pbounds, random_state=self.seed)
+        # optimizer.maximize(init_points=26, n_iter=12, kappa=20, xi=0.1)
         optimizer.maximize(init_points=13, n_iter=2, kappa=20, xi=0.1)
         best_param = optimizer.max
         # self.seed = ((self.seed * 123 + 321) * 123) % 19260817
@@ -223,6 +229,7 @@ def black_box_function(bandwidth_lower_bound: float,
     # queue = int(queue)
     t_start = time.time()
     delay_noise = 0
+    # bandwidth_upper_bound += bandwidth_lower_bound
     trace = generate_trace(duration_range=(30, 30),
                            bandwidth_lower_bound_range=(bandwidth_lower_bound, bandwidth_lower_bound),
                            bandwidth_upper_bound_range=(bandwidth_upper_bound, bandwidth_upper_bound),
