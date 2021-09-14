@@ -230,27 +230,30 @@ def black_box_function(bandwidth_lower_bound: float,
     t_start = time.time()
     delay_noise = 0
     # bandwidth_upper_bound += bandwidth_lower_bound
-    trace = generate_trace(duration_range=(30, 30),
-                           bandwidth_lower_bound_range=(bandwidth_lower_bound, bandwidth_lower_bound),
-                           bandwidth_upper_bound_range=(bandwidth_upper_bound, bandwidth_upper_bound),
-                           delay_range=(delay, delay),
-                           loss_rate_range=(loss, loss),
-                           queue_size_range=(queue, queue),
-                           T_s_range=(T_s, T_s),
-                           delay_noise_range=(delay_noise, delay_noise),
-                           constant_bw=False)
-    trace.dump(osp.join(SAVEDIR, "trace.json"))
-    heuristic_mi_level_reward, heuristic_pkt_level_reward = heuristic.test(
-        trace, rl_method.log_dir)
-    print("trace generation used {}s".format(time.time() - t_start))
-    t_start = time.time()
-    _, reward_list, _, _, _, _, _, _, _, rl_pkt_log = rl_method.test(
-        trace, rl_method.log_dir)
-    # print("rl_method used {}s".format(time.time() - t_start))
-    rl_mi_level_reward = np.mean(reward_list)
+    score = []
+    for it in range(10):
+        trace = generate_trace(duration_range=(30, 30),
+                            bandwidth_lower_bound_range=(bandwidth_lower_bound, bandwidth_lower_bound),
+                            bandwidth_upper_bound_range=(bandwidth_upper_bound, bandwidth_upper_bound),
+                            delay_range=(delay, delay),
+                            loss_rate_range=(loss, loss),
+                            queue_size_range=(queue, queue),
+                            T_s_range=(T_s, T_s),
+                            delay_noise_range=(delay_noise, delay_noise),
+                            constant_bw=False)
+        trace.dump(osp.join(SAVEDIR, "trace.json"))
+        heuristic_mi_level_reward, heuristic_pkt_level_reward = heuristic.test(
+            trace, rl_method.log_dir)
+        print("trace generation used {}s".format(time.time() - t_start))
+        t_start = time.time()
+        _, reward_list, _, _, _, _, _, _, _, rl_pkt_log = rl_method.test(
+            trace, rl_method.log_dir)
+        # print("rl_method used {}s".format(time.time() - t_start))
+        rl_mi_level_reward = np.mean(reward_list)
 
-    rl_pkt_level_reward = PacketLog.from_log(rl_pkt_log).get_reward("", trace)
-    return heuristic_pkt_level_reward - rl_pkt_level_reward
+        rl_pkt_level_reward = PacketLog.from_log(rl_pkt_log).get_reward("", trace)
+        score.append(heuristic_pkt_level_reward - rl_pkt_level_reward)
+    return np.array(score).mean()
     # return heuristic_mi_level_reward - rl_mi_level_reward
 
 
@@ -270,7 +273,7 @@ def main():
                     pretrained_model_path=pre_model,
                     timesteps_per_actorbatch=7200, delta_scale=1)
     name = args.save_dir.split('/')[-1] + "_BeforeBO"
-    # compare(pre_model, name)
+    compare(pre_model, name)
     if not args.bbr:
         genet = Genet(args.config_file, args.save_dir, black_box_function, cubic, aurora)
         genet.train()
